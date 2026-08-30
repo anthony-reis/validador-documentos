@@ -19,12 +19,38 @@ conhecidas" abaixo antes de escrever a seção de limitações do TFG.
 
 ## Requisitos
 
-- macOS com [Homebrew](https://brew.sh/)
-- ~10 GB livres em disco (modelos de embedding/reranker + LLM)
+- macOS com [Homebrew](https://brew.sh/) já instalado
+- ~11 GB livres em disco (modelos de embedding/reranker + LLM)
 - Internet **apenas durante o setup** — depois disso o sistema roda 100%
   offline (restrição de projeto, ver `CLAUDE.md`)
 
-## Setup — do zero até rodar
+## Início rápido (recomendado)
+
+Clone o repositório e rode o script de instalação — ele faz tudo:
+instala Python 3.11 e Ollama via Homebrew, cria o ambiente virtual,
+instala as dependências do projeto, baixa o modelo de LLM e os modelos
+de embedding/reranker, indexa o corpus normativo (já vem no
+repositório) e abre a interface no seu navegador.
+
+```bash
+git clone https://github.com/anthony-reis/validador-documentos.git
+cd validador-documentos
+python3 instalar.py
+```
+
+O script mostra uma barra de progresso em porcentagem e o tempo gasto
+em cada etapa. **Vai baixar ~11 GB no total** (LLM + modelos de
+embedding/reranker) — pode demorar bastante dependendo da sua conexão.
+Rodar `python3 instalar.py` de novo é seguro: ele pula tudo que já
+estiver instalado/baixado (testado de verdade nesta máquina, não só
+lido no código).
+
+Se algo der errado no meio do caminho, rode o script de novo — ele
+retoma da etapa que faltou, não repete o que já deu certo. Se preferir
+entender/rodar cada passo manualmente (ou não estiver no macOS), veja
+"Setup — passo a passo manual" abaixo.
+
+## Setup — passo a passo manual
 
 ### 1. Runtime (Python 3.11 e Ollama)
 

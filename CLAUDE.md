@@ -399,6 +399,38 @@ separadamente que o bloqueio genuinamente rejeita um host externo real
 (`8.8.8.8`) com `RuntimeError` — não é um mecanismo que passaria por
 não estar de fato monitorando nada.
 
+### Script de instalação automática (`instalar.py`)
+
+Adicionado para permitir que um colega clone o repositório e rode um
+único comando (`python3 instalar.py`) para ter tudo pronto -- Python
+3.11, Ollama, o modelo de LLM, os modelos de embedding/reranker, o
+corpus indexado e a interface aberta no navegador.
+
+**Decisões**:
+- Só usa a biblioteca padrão do Python (nenhuma dependência externa) --
+  precisa funcionar ANTES de qualquer coisa estar instalada.
+- Idempotente: cada etapa verifica se já está pronta antes de refazer
+  (`.venv` existe? modelo já em `ollama list`? `models/bge-m3/config.json`
+  já existe?). Rodar de novo depois de uma etapa falhar retoma do ponto
+  certo, não repete tudo.
+- Alvo é macOS com Homebrew — mesma restrição já documentada no
+  `README.md` > Requisitos; o projeto nunca foi validado em outro SO.
+
+**Bug real encontrado e corrigido durante o teste**: com o stdout
+redirecionado para um arquivo (não um terminal), o `print()` do script
+fica bufferizado pelo Python -- só a saída dos subprocessos
+(brew/pip/ollama/hf, que escrevem direto no descritor de arquivo)
+aparecia em tempo real; as mensagens de progresso do próprio script só
+apareceriam quando o processo terminasse (nunca, já que a última etapa
+sobe um servidor que fica rodando). Corrigido com
+`sys.stdout.reconfigure(line_buffering=True)` logo no início do script.
+Testado de verdade (não só lido no código): rodei o script duas vezes
+nesta máquina redirecionando para arquivo, confirmando que todas as
+etapas foram puladas corretamente (Python/Ollama já instalados, `.venv`
+existente, modelo Ollama já baixado, ambos os modelos de embedding já
+baixados) e que a barra de progresso chegou em 100% com a Streamlit
+subindo em seguida.
+
 ### Fechamento do projeto
 
 Todas as 7 fases do roteiro (`PROMPT-CLAUDE-CODE.md`) estão
