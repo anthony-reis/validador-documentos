@@ -28,6 +28,9 @@ MANIFESTO: tuple[EntradaCorpus, ...] = (
     EntradaCorpus("IN_134_2022.pdf", "IN 134/2022", "artigos"),
     EntradaCorpus("IN_138_2022.pdf", "IN 138/2022", "artigos"),
     EntradaCorpus("ICH_Q10.pdf", "ICH Q10", "secoes_numeradas"),
+    EntradaCorpus("RDC_166_2017.pdf", "RDC 166/2017", "artigos"),
+    EntradaCorpus("PR_RDC_166_2017.pdf", "Perguntas e Respostas RDC 166/2017", "perguntas_respostas"),
+    EntradaCorpus("GUIA_ANVISA_62_2023_GERENCIAMENTO_RISCOS.pdf", "Guia ANVISA 62/2023", "perguntas_respostas"),
 )
 
 

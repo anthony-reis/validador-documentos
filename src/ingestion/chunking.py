@@ -16,6 +16,18 @@ inciso VI") -- exigir maiúscula e início de linha evita que essas
 referências cruzadas sejam confundidas com a estrutura do próprio
 documento. Validado contra a RDC 658/2022: os 380 artigos encontrados
 formam uma sequência 1..380 sem lacunas nem duplicatas.
+
+**Bug real encontrado e corrigido com a RDC 166/2017**: essa norma tem
+TRES grafias diferentes para o numero do artigo dentro do MESMO PDF --
+"Art. 9°" (sinal de grau, U+00B0, nao "º" indicador ordinal U+00BA;
+visualmente identicos, Unicode diferente), "Art. 10." (numero + ponto,
+convencao padrao para artigos >= 10) e "Art. 11" em diante, SEM nenhuma
+pontuacao apos o numero. Com o regex antigo exigindo "º" ou ".", so' 10
+dos 71 artigos eram reconhecidos (o resto do documento virava um unico
+bloco preso ao Art. 10). O caractere apos o numero agora e' OPCIONAL --
+o que de fato distingue um artigo real de uma referencia cruzada em
+prosa continua sendo maiuscula + inicio de linha (ver acima), entao
+tornar a pontuacao opcional nao reintroduz esse problema.
 """
 
 from __future__ import annotations
@@ -25,8 +37,8 @@ from dataclasses import dataclass
 
 from src.ingestion.texto_utils import dividir_por_tamanho, slug
 
-_ARTIGO_RE = re.compile(r"^[ \t]*Art\.\s*(\d+)(?:º|\.)\s*", re.MULTILINE)
-_PARAGRAFO_RE = re.compile(r"^[ \t]*§\s*(\d+º|único)\s*", re.MULTILINE)
+_ARTIGO_RE = re.compile(r"^[ \t]*Art\.\s*(\d+)(?:[º°]|\.)?\s*", re.MULTILINE)
+_PARAGRAFO_RE = re.compile(r"^[ \t]*§\s*(\d+[º°]?|único)\s*", re.MULTILINE)
 _CAPITULO_RE = re.compile(r"^[ \t]*(CAPÍTULO\s+[IVXLCDM]+)\s*\n\s*(.+)$", re.MULTILINE)
 _SECAO_RE = re.compile(r"^[ \t]*(Seção\s+[IVXLCDM]+)\s*\n\s*(.+)$", re.MULTILINE)
 

@@ -11,11 +11,14 @@ decisão de projeto).
 
 **Status atual**: as 7 fases do roteiro estão concluídas (ingestão →
 indexação → recuperação A/B/C/D → agente LangGraph → avaliação →
-interface Streamlit → verificação offline). **O ground truth real ainda
-precisa ser anotado manualmente** antes que o experimento comparativo
-A→D produza números de verdade — ver "Como avaliar" abaixo. Ver
-`CLAUDE.md` > "Fases do projeto" para o histórico completo e "Limitações
-conhecidas" abaixo antes de escrever a seção de limitações do TFG.
+interface Streamlit → verificação offline), mais uma rodada de
+melhorias de performance e expansão de corpus (RDC 166/2017 + P&R, Guia
+ANVISA 62/2023 — ver `CLAUDE.md` > "Melhorias de performance" e
+"Expansão do corpus"). **O ground truth real ainda precisa ser anotado
+manualmente** antes que o experimento comparativo A→D produza números
+de verdade — ver "Como avaliar" abaixo. Ver `CLAUDE.md` > "Fases do
+projeto" para o histórico completo e "Limitações conhecidas" abaixo
+antes de escrever a seção de limitações do TFG.
 
 ## Requisitos
 
@@ -91,12 +94,18 @@ hf download BAAI/bge-reranker-v2-m3 --local-dir models/bge-reranker-v2-m3  # ~2.
 
 ### 5. Corpus normativo
 
-O corpus normativo (`RDC_658_2022.pdf`, `IN_134_2022.pdf`,
-`IN_138_2022.pdf`, `ICH_Q10.pdf`) já está versionado em `data/normas/`
-neste repositório — não precisa baixar de novo. Para adicionar uma nova
-norma ao corpus, veja `REFERENCIAS-E-CORPUS.md` para as fontes oficiais
-e registre o arquivo em `src/indexing/corpus.py` (manifesto explícito
-arquivo → norma/formato).
+O corpus normativo (RDC 658/2022, IN 134/2022, IN 138/2022, ICH Q10,
+RDC 166/2017 + Perguntas e Respostas, Guia ANVISA 62/2023) já está
+versionado em `data/normas/` neste repositório — não precisa baixar de
+novo. Para adicionar uma nova norma ao corpus, veja
+`REFERENCIAS-E-CORPUS.md` para as fontes oficiais e registre o arquivo
+em `src/indexing/corpus.py` (manifesto explícito arquivo → norma/formato).
+
+> **Nota sobre o Guia ANVISA 62/2023**: não existe tradução oficial em
+> português do ICH Q9(R1) (Quality Risk Management). Em vez de usar uma
+> "tradução livre" de fonte não verificada, o corpus usa o guia próprio
+> da ANVISA (nº 62/2023) sobre o mesmo tema — oficial, em português,
+> com estrutura de conteúdo equivalente ao ICH Q9(R1).
 
 ### 6. Variáveis de ambiente
 
@@ -125,14 +134,18 @@ python -m src.indexing.build
 
 Isso lê todo `data/normas/`, gera os chunks (hierárquicos por
 artigo/parágrafo para normas brasileiras, por seção numerada para o ICH
-Q10), grava o índice denso em `chroma_db/` (ChromaDB + embeddings
+Q10, por pergunta+resposta para documentos de P&R/guias no mesmo
+formato), grava o índice denso em `chroma_db/` (ChromaDB + embeddings
 `bge-m3`) e o índice esparso em `bm25_index/` (BM25). Saída esperada:
 
 ```
-[indexacao] 821 chunks extraidos do corpus.
+[indexacao] 1248 chunks extraidos do corpus.
+  - Guia ANVISA 62/2023: 92 chunks
   - ICH Q10: 65 chunks
   - IN 134/2022: 60 chunks
   - IN 138/2022: 162 chunks
+  - Perguntas e Respostas RDC 166/2017: 213 chunks
+  - RDC 166/2017: 122 chunks
   - RDC 658/2022: 534 chunks
 [indexacao] hash do corpus: <hash sha256>
 ...
@@ -172,8 +185,9 @@ for julgamento in relatorio.julgamentos:
         print("  ->", julgamento.citacao.norma, julgamento.citacao.artigo)
 ```
 
-> Em CPU (sem GPU), espere ~20-25 minutos para um documento de poucas
-> páginas com `qwen2.5:7b-instruct-q4_K_M` — cada asserção extraída gera
+> Espere de alguns minutos a ~25 minutos para um documento de poucas
+> páginas com `qwen2.5:7b-instruct-q4_K_M`, dependendo de quantas
+> asserções checáveis o documento tiver — cada asserção extraída gera
 > pelo menos uma chamada ao LLM. O teste de ponta a ponta real
 > (`tests/test_agent.py::TestPipelineRealComOllama`) só roda com
 > `RUN_SLOW_LLM_TESTS=1` por causa desse custo.
@@ -346,12 +360,31 @@ limitações do TFG — detalhes e raciocínio completo em `CLAUDE.md`:
 - **Ground truth de avaliação (Fases 5) não vem anotado** — ver "Como
   avaliar" acima. Sem ele, não há números reais de `precision@k`,
   `recall@k`, `MRR`, `nDCG@k` nem das métricas de geração.
-- **Custo de execução em CPU**: ~20-25s por julgamento do agente com
-  `qwen2.5:7b-instruct-q4_K_M` sem GPU — relevante para dimensionar
-  quantas perguntas o ground truth de geração deve ter na prática.
+- **Custo de execução por chamada de LLM**: ~20-25s por julgamento com
+  `qwen2.5:7b-instruct-q4_K_M` (medido em Apple Silicon com aceleração
+  Metal via Ollama — a documentação anterior descrevia isso como
+  "CPU-only", o que é impreciso; o número em si já era realista).
+  Relevante para dimensionar quantas perguntas o ground truth de geração
+  deve ter na prática. **Chamadas concorrentes ao LLM não reduzem esse
+  tempo** — testado empiricamente (duas vezes, com viés de aquecimento
+  controlado): o Ollama serializa gerações para o mesmo modelo por
+  padrão nesta configuração.
 - **`bge-m3` é pesado (~4,3 GB em disco)**; alternativa menor
   (`intfloat/multilingual-e5-base`) só deve ser usada se necessário, e
   registrada como limitação metodológica adicional caso adotada.
+- **RDC 166/2017** tem três grafias diferentes para o número do artigo
+  no mesmo PDF ("Art. 9°" com sinal de grau, "Art. 10." com ponto,
+  "Art. 11" em diante sem nenhuma pontuação) — o chunker foi corrigido
+  para aceitar as três variantes.
+- **Guia ANVISA 62/2023** é usado no lugar do ICH Q9(R1) (que não tem
+  tradução oficial em português) — cobre o mesmo tema (gestão de risco
+  de qualidade) com estrutura de conteúdo equivalente, mas é um
+  documento distinto emitido pela ANVISA, não uma tradução do ICH.
+- **Chunking de Perguntas e Respostas** (`chunking_perguntas_respostas.py`):
+  o `titulo_secao` (contexto hierárquico) fica impreciso para ~3
+  marcadores na cauda do documento "Perguntas e Respostas RDC 166/2017"
+  — o conteúdo (pergunta+resposta) continua correto, só o rótulo de
+  contexto que fica desatualizado nessa região específica.
 
 ## Estrutura do projeto
 

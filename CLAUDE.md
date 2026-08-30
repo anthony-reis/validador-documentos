@@ -171,7 +171,9 @@ validador-docs/  (raiz deste repo)
 
 ## Fases do projeto
 
-**Progresso atual: as 7 fases do roteiro estão concluídas.** Pendências
+**Progresso atual: as 7 fases do roteiro estão concluídas, mais uma
+rodada de melhorias de performance e expansão de corpus (ver seções
+"Melhorias de performance" e "Expansão do corpus" abaixo).** Pendências
 que continuam do usuário, não do código: anotar o ground truth real
 (Fase 5) e rodar o experimento comparativo A→D com dados de verdade.
 
@@ -483,6 +485,165 @@ do portal gov.br). O PDF em `data/normas/RDC_658_2022.pdf` foi obtido via
 mirror do Sindusfarma, com conteúdo conferido contra o cabeçalho oficial do
 Diário Oficial da União (Edição 62, Seção 1, Página 320, publicado em
 31/03/2022). Registrar essa proveniência na metodologia do TFG.
+
+## Melhorias de performance (pós-Fase 7)
+
+O usuário reportou que a análise de documento na Streamlit demorava
+muito e que a extração de TODAS as páginas terminava por completo antes
+de qualquer julgamento começar a aparecer. Investigação (agentes
+Explore + Plan) confirmou a causa e mapeou oportunidades de
+paralelismo/batching; plano completo em
+`~/.claude/plans/temos-todo-o-contexto-magical-piglet.md`.
+
+**Achado empírico mais importante, medido três vezes de formas
+diferentes nesta máquina (Apple M4, 10 núcleos, 16GB, Ollama com
+aceleração Metal, `OLLAMA_NUM_PARALLEL` não configurado)**: chamadas
+concorrentes ao LLM (extração ou julgamento) **não reduzem o tempo
+total** — o Ollama serializa gerações para o mesmo modelo por padrão.
+Uma primeira medição sugeriu 66% de ganho, mas era viés de aquecimento
+do modelo (a chamada "sequencial" incluía o custo de carregar o modelo
+frio); refeita com aquecimento controlado e ordem invertida, o
+resultado caiu para zero/negativo. **Isso mudou a priorização**: as
+melhorias implementadas foram as que não dependem de paralelismo
+incerto do Ollama, não a concorrência de chamadas de LLM em si (essa
+ficou fora de escopo por enquanto — precisaria reconfigurar o serviço
+Ollama compartilhado do usuário e testar `OLLAMA_NUM_PARALLEL`, uma
+mudança de sistema que exige confirmação explícita antes de fazer).
+
+**Implementado**:
+1. **Cache do índice BM25** (`src/indexing/esparso.py`): `buscar()`
+   desserializava o índice inteiro do disco a cada chamada — único
+   componente sem cache entre os quatro modelos/índices do agente
+   (embedding, reranker e LLM já eram `lru_cache`). Achado durante o
+   mapeamento, não relatado pelo usuário.
+2. **Filtro de relevância na extração** (`src/agent/prompts.py`):
+   critério mais rígido para `SISTEMA_EXTRACAO_ASSERCOES` — só extrai
+   uma afirmação se for plausível imaginar uma citação normativa
+   específica que a confirme ou negue, com exemplos negativos concretos
+   (datas/lotes/leituras pontuais sem exigência associada). **Essa foi
+   a melhoria de maior impacto real**: no documento fictício de teste,
+   reduziu de 62 para 29 asserções extraídas, cortando o tempo total de
+   ~25min para ~12min14s — quase inteiramente explicado pela redução no
+   número de chamadas ao LLM (66→33), não por batching (o custo por
+   chamada de LLM individual ficou praticamente idêntico, ~22s antes e
+   depois — batching acelera embedding/Chroma/reranker/disco, uma
+   fração pequena comparada ao custo de geração do LLM).
+3. **Interleaving por página** (`app/streamlit_app.py`): um único loop
+   por página julga as asserções daquela página antes de seguir para a
+   próxima, em vez de extrair TODAS as páginas primeiro. Resolve
+   literalmente a reclamação do usuário (tempo até o primeiro resultado
+   visível cai de "100% da extração" para "1 página") — reordenação
+   pura, não muda o tempo total sozinha.
+4. **`julgar_assercao` dividido** em wrapper fino + núcleo reutilizável
+   `julgar_assercao_com_resultados(resultados, assercao)`
+   (`src/agent/nos.py`) — refatoração pura, comportamento e testes
+   inalterados, mas permite reaproveitar a lógica de julgamento com
+   resultados de recuperação já buscados em lote.
+5. **Recuperação em lote** (`buscar_lote`, método aditivo em toda a
+   camada de recuperação — não mexe no `Retriever.buscar()` nem nos
+   testes fake existentes): `src/indexing/vetorial.py` faz uma única
+   chamada de embedding + uma única chamada `collection.query()` com
+   múltiplos `query_embeddings` (Chroma já suporta isso nativamente,
+   só não era usado) em vez de um par de chamadas por assercão.
+   `src/retrieval/reranqueado.py::buscar_lote` é o maior ganho desta
+   camada: uma única chamada `CrossEncoder.predict()` sobre os pares de
+   TODAS as asserções do lote, em vez de uma chamada por asserção.
+   `src/retrieval/hibrido.py` roda denso+esparso em paralelo via
+   `ThreadPoolExecutor` (são independentes entre si; isso sim ajuda,
+   diferente da concorrência de LLM, porque usa embeddings/BM25, não o
+   Ollama). Novo `RETRIEVAL_BATCH_SIZE` em `src/config.py`.
+   `app/streamlit_app.py` usa `buscar_lote` por página (com fallback via
+   `hasattr` para retrievers que não implementem o método).
+
+**Ocorrência rara e não relacionada, registrada por transparência**: ao
+rodar `tests/test_retrieval.py` repetidas vezes após adicionar
+`ThreadPoolExecutor` em `hibrido.py`, uma vez (1 em 6 execuções) apareceu
+`libc++abi: terminating due to uncaught exception ... recursive_mutex
+lock failed` no encerramento do processo, DEPOIS do pytest já ter
+reportado sucesso (exit code 0). Não reproduziu em 5 execuções
+subsequentes — características de uma race condition conhecida entre
+threading e bibliotecas nativas de ML (torch/hnswlib) no encerramento
+do interpretador em macOS, não um bug de lógica.
+
+## Expansão do corpus (pós-Fase 7)
+
+Usuário reportou taxa alta de `INDETERMINADO` e pediu para investigar
+se era falta de cobertura na base de conhecimento. Evidência real
+encontrada antes de expandir (não decidido por suposição): uma citação
+de julgamento real foi parar em "ICH Q10 4.3" por falta de uma norma
+sobre gestão de risco no corpus. **Peguei o pedido original do usuário
+(reestruturar tudo em `base-conhecimento/`, baixar ~13 documentos
+incluindo Farmacopeia e traduções livres de fontes não oficiais como
+Scribd) e negociei um escopo reduzido**: manter `data/normas/` (já
+conectado ao manifesto/pipeline existente, não criar árvore paralela),
+adicionar só documentos com evidência real de lacuna, verificar cada um
+por conteúdo antes de aceitar (mesmo rigor da RDC 658 original), e evitar
+traduções não-oficiais sempre que uma fonte oficial existir.
+
+**Documentos adicionados**:
+- `RDC_166_2017.pdf` (validação de métodos analíticos) — mirror
+  fitoterapiabrasil.com.br, conteúdo conferido contra o cabeçalho oficial
+  (Diretoria Colegiada, Art. 1º–71).
+- `PR_RDC_166_2017.pdf` (Perguntas e Respostas RDC 166/2017 e Guia
+  10/2017) — baixado direto do gov.br/anvisa oficial.
+- `GUIA_ANVISA_62_2023_GERENCIAMENTO_RISCOS.pdf` — **usado no lugar do
+  ICH Q9(R1)**: não existe tradução oficial em português do ICH Q9(R1)
+  (confirmado por busca), e o usuário pediu tudo em pt-BR. Em vez de
+  usar uma "tradução livre" de proveniência incerta (risco real: um erro
+  de tradução faria o agente citar uma exigência que não existe),
+  encontrei que a ANVISA publica seu **próprio guia oficial** (Guia nº
+  62/2023, 19/07/2023) cobrindo o mesmo conteúdo do ICH Q9(R1)
+  (estrutura do sumário quase idêntica: introdução, escopo, princípios,
+  processo geral, metodologia, integração, definições, anexo de
+  ferramentas) — oficial, em português, sem o risco de tradução
+  não-verificada. Resolve o pedido de pt-BR e a preocupação de rigor ao
+  mesmo tempo.
+
+**Terceira família de chunking** (`src/ingestion/chunking_perguntas_respostas.py`):
+nem Art./§ (normas brasileiras) nem seções numeradas "puras" do ICH Q10
+(número sozinho numa linha em negrito, título em linhas negrito
+SEPARADAS) -- em documentos de Perguntas e Respostas o número e o texto
+da pergunta/título aparecem JUNTOS no MESMO trecho em negrito (ex.:
+"3.1.2. Em casos que não se tratam de registro de IFA: [...]?"). Essa
+mesma família também funcionou para o Guia ANVISA 62/2023 (que segue o
+padrão do ICH Q9(R1), também "número+título juntos") — não foi
+necessária uma quarta estratégia.
+
+**Três bugs reais encontrados e corrigidos durante a validação**:
+1. `src/ingestion/chunking.py` (afeta TAMBÉM RDC 658/IN 134/138 já
+   indexadas, retroativo): a RDC 166/2017 usa "°" (sinal de grau,
+   U+00B0) em vez de "º" (indicador ordinal, U+00BA) para os artigos
+   1-9, e NENHUMA pontuação para os artigos 11+ (só o artigo 10 usa
+   ponto) -- três grafias diferentes no MESMO PDF. Com o regex exigindo
+   "º" ou ".", só 1 dos 71 artigos era reconhecido. Corrigido tornando o
+   caractere final opcional.
+2. Marcadores consecutivos sem texto normal entre eles (ex.: "3.4.5.
+   PRECISÃO" imediatamente seguido por "3.4.5.1 <pergunta>") faziam o
+   segundo ser engolido como continuação do título do primeiro -- mesma
+   classe de bug já corrigida no chunker do ICH Q10 na Fase 1, mas essa
+   correção não cobria o caso aqui porque marcador+título vêm juntos, não
+   separados.
+3. Marcadores em que o número está sozinho numa linha (sem título na
+   mesma linha, ex. "3.1." seguido de "ANEXO I" na linha seguinte --
+   mistura do padrão ICH dentro de um documento que majoritariamente usa
+   o padrão "número+título juntos") não eram reconhecidos como início de
+   novo marcador porque a checagem exigia espaço em branco após o
+   número, que não existe no fim de uma linha isolada. Corrigido
+   aceitando também fim-de-string.
+
+**Limitação de corpus aceita e documentada** (não corrigida, mesmo
+espírito do defeito de numeração do ICH Q10 na Fase 1): o `titulo_secao`
+fica impreciso para ~3 marcadores na cauda do documento de Perguntas e
+Respostas (seções ANEXO III/GUIA/OUTRAS DÚVIDAS), provavelmente por um
+fragmento de resposta com número em negrito sendo confundido com um
+marcador real. O CONTEÚDO desses chunks (pergunta+resposta) continua
+correto — só o rótulo de contexto hierárquico fica desatualizado.
+
+Corpus final: 1248 chunks (RDC 658: 534, P&R RDC 166: 213, IN 138: 162,
+RDC 166: 122, Guia ANVISA 62: 92, ICH Q10: 65, IN 134: 60). Retesting
+manual confirmou relevância alta (score > 0.94) para consultas sobre
+validação analítica e gestão de risco -- exatamente os tópicos que
+motivaram a expansão. 93 testes passando.
 
 ## Armadilhas conhecidas
 
