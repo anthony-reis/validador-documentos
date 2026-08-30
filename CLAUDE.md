@@ -171,6 +171,9 @@ validador-docs/  (raiz deste repo)
 
 ## Fases do projeto
 
+**Progresso atual: Fase 1 concluída** (esqueleto + ingestão/chunking da
+RDC 658/2022 funcionando e testado). Próxima: Fase 2 (indexação).
+
 - **Fase 0** — `CLAUDE.md` (este arquivo), `pyproject.toml`, `.env.example`,
   `config.py`, esqueleto de pastas, `pytest` rodando vazio.
 - **Fase 1** — Ingestão: leitura de PDFs, limpeza, chunking hierárquico,
@@ -200,9 +203,27 @@ Estas etapas são manuais, feitas com internet, **antes** de rodar o sistema:
    `hf download BAAI/bge-m3 --local-dir models/bge-m3` e
    `hf download BAAI/bge-reranker-v2-m3 --local-dir models/bge-reranker-v2-m3`.
 
-Status atual verificado nesta máquina (30/08/2026): nenhum desses passos foi
-feito ainda — sem Python 3.11, sem Ollama, sem modelos, sem corpus. Ver
-`README.md` para o passo a passo de setup.
+Status atual (30/08/2026): Python 3.11 e Ollama instalados via Homebrew;
+`data/normas/RDC_658_2022.pdf` versionado no repositório (ver nota abaixo).
+Ainda faltam: `ollama pull` do modelo, download de `bge-m3`/`bge-reranker-v2-m3`,
+e o restante do corpus (ICH Q10, INs 134/2022 e 138/2022, Perguntas &
+Respostas de BPF). Ver `README.md` para o passo a passo de setup.
+
+### Nota sobre o corpus normativo e o git
+
+Ao contrário de `models/` e `chroma_db/` (artefatos derivados, git-ignored),
+`data/normas/` **é versionado no git**: é a base de conhecimento que o
+sistema indexa, então precisa acompanhar o repositório para reprodutibilidade
+do experimento. `data/documentos_teste/` continua git-ignored — são
+documentos de terceiros a validar, potencialmente sensíveis, não parte da
+base de conhecimento.
+
+O link oficial do `antigo.anvisa.gov.br` para a RDC 658/2022 citado em
+`REFERENCIAS-E-CORPUS.md` está fora do ar (redireciona para página genérica
+do portal gov.br). O PDF em `data/normas/RDC_658_2022.pdf` foi obtido via
+mirror do Sindusfarma, com conteúdo conferido contra o cabeçalho oficial do
+Diário Oficial da União (Edição 62, Seção 1, Página 320, publicado em
+31/03/2022). Registrar essa proveniência na metodologia do TFG.
 
 ## Armadilhas conhecidas
 
