@@ -171,12 +171,12 @@ validador-docs/  (raiz deste repo)
 
 ## Fases do projeto
 
-**Progresso atual: Fase 5 concluída** (métricas de recuperação e
-geração, runners de experimento, templates de ground truth). **O
-ground truth real ainda não foi anotado** — os templates estão vazios
-(só uma linha de exemplo marcada para apagar); o experimento central
-A→D só produz números reais depois dessa anotação manual. Próxima:
-Fase 6 (Streamlit).
+**Progresso atual: Fase 6 concluída** (interface Streamlit: upload,
+seleção de estratégia, relatório com citações, aviso de supervisão
+humana). **O ground truth real ainda não foi anotado** — os templates
+estão vazios (só uma linha de exemplo marcada para apagar); o
+experimento central A→D só produz números reais depois dessa anotação
+manual. Próxima: Fase 7 (empacotamento offline, README de reprodução).
 
 - **Fase 0** — `CLAUDE.md` (este arquivo), `pyproject.toml`, `.env.example`,
   `config.py`, esqueleto de pastas, `pytest` rodando vazio.
@@ -350,6 +350,35 @@ foi de fato indexado), modelo de embedding, reranker, `RRF_K`,
 `src/evaluation/run_geracao.py`: runner separado e mais lento (usa o
 agente completo, uma chamada de LLM por linha do gabarito) — não faz
 sentido acoplar ao runner rápido de recuperação.
+
+### Interface Streamlit (Fase 6)
+
+`app/streamlit_app.py` chama os nós do agente (`src/agent/nos.py`)
+**diretamente**, não o grafo compilado (`src/agent/grafo.py`):
+`processar_assercoes` no grafo é um único nó que faz o loop sobre as
+assercões internamente, sem nenhum ponto de checkpoint para a UI
+observar — e o custo real por asserção (dezenas de segundos em CPU, ver
+métricas da Fase 4) torna progresso visível essencial para a
+usabilidade. A UI orquestra os mesmos nós manualmente para atualizar a
+barra de progresso entre um julgamento e outro.
+
+Aviso de supervisão humana obrigatório e sempre visível no topo da
+página (`st.warning`), citando o raciocínio do Annex 22 — exigência
+explícita da especificação, não um detalhe cosmético.
+
+**Testado com `streamlit.testing.v1.AppTest`** (não apenas leitura de
+código): verifiquei manualmente primeiro que o servidor sobe (`streamlit
+run` + `curl` retornando 200), depois formalizei em
+`tests/test_streamlit_app.py` — carrega sem exceção, aviso de supervisão
+presente, seletor com as 4 estratégias, e o relatório renderiza citação/
+score/contagem por veredito corretamente a partir de um estado
+pré-populado (sem rodar o pipeline completo, que levaria dezenas de
+minutos).
+
+Opção de **limitar a análise às N primeiras páginas** adicionada na
+sidebar — não estava na especificação original, mas é uma acomodação
+pragmática ao custo real de execução em CPU (permite testar a interface
+sem esperar 25+ minutos a cada iteração).
 
 ### Duas famílias de chunking (decisão da Fase 1)
 

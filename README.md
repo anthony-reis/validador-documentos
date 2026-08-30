@@ -9,11 +9,12 @@ citação rastreável e sujeito a revisão humana — nunca uma aprovação
 automática (ver `CLAUDE.md` para o raciocínio completo por trás de cada
 decisão de projeto).
 
-**Status atual**: Fase 5 de 7 concluída (ingestão + indexação +
-recuperação A/B/C/D + agente LangGraph + avaliação). **O ground truth
-real ainda precisa ser anotado manualmente** antes que o experimento
-comparativo A→D produza números de verdade — ver "Como avaliar" abaixo.
-Ver `CLAUDE.md` > "Fases do projeto" para o roteiro completo.
+**Status atual**: Fase 6 de 7 concluída (ingestão + indexação +
+recuperação A/B/C/D + agente LangGraph + avaliação + interface
+Streamlit). **O ground truth real ainda precisa ser anotado
+manualmente** antes que o experimento comparativo A→D produza números
+de verdade — ver "Como avaliar" abaixo. Ver `CLAUDE.md` > "Fases do
+projeto" para o roteiro completo.
 
 ## Requisitos
 
@@ -252,6 +253,29 @@ python -m src.evaluation.run_geracao --gabarito experiments/gabarito_geracao_tem
 Uma chamada ao LLM por linha do gabarito (~20-25s cada em CPU, ver
 métricas da Fase 4 acima) — grava em `experiments/resultados_geracao.csv`
 (taxa de acerto, taxa de abstenção, fidelidade de citação).
+
+## Como usar a interface Streamlit
+
+Com o índice já construído e o Ollama rodando:
+
+```bash
+source .venv/bin/activate
+streamlit run app/streamlit_app.py
+```
+
+Abra `http://localhost:8501`. Na barra lateral, escolha a estratégia de
+recuperação (A/B/C/D) e, opcionalmente, limite a análise às N primeiras
+páginas do documento (útil para testar rápido — em CPU, cada asserção
+extraída custa dezenas de segundos de LLM, ver métricas da Fase 4).
+Faça upload do PDF a validar e clique em "Analisar documento". O
+relatório mostra a contagem por veredito e, para cada asserção, um
+painel expansível com a justificativa do modelo e a citação normativa
+(norma, artigo, trecho literal, `chunk_id`, score de recuperação) — ou o
+motivo da abstenção, quando aplicável.
+
+O aviso de que o sistema é assistivo (não uma aprovação automática)
+aparece sempre no topo da página, conforme a restrição adotada na
+metodologia (ver `CLAUDE.md`).
 
 ## Estrutura do projeto
 
