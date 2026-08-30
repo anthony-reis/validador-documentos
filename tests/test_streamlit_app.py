@@ -1,7 +1,7 @@
-"""Testes da interface Streamlit (Fase 6) via `AppTest` -- roda o script
-de verdade sem precisar de navegador nem de um servidor Streamlit
-rodando. Verificado manualmente tambem com `streamlit run` + inspecao da
-pagina antes de escrever estes testes (ver CLAUDE.md)."""
+"""Testes da interface Streamlit (Fase 6, redesenhada) via `AppTest` --
+roda o script de verdade sem precisar de navegador. Verificado
+manualmente tambem com `streamlit run` + inspecao da pagina antes de
+escrever/reescrever estes testes (ver CLAUDE.md)."""
 
 from __future__ import annotations
 
@@ -22,9 +22,16 @@ def test_app_carrega_sem_excecao_e_mostra_aviso_de_supervisao_humana():
     at.run(timeout=30)
 
     assert not at.exception
-    assert at.title[0].value == "Validador de Documentos Regulatórios — Indústria Farmacêutica"
+    assert at.title[0].value == "🧪 Validador de Documentos Regulatórios"
     assert len(at.warning) == 1
-    assert "supervisão humana" in at.warning[0].value.lower()
+    assert "não substitui revisão humana" in at.warning[0].value.lower()
+
+
+def test_botao_de_envio_fica_desabilitado_sem_arquivo_anexado():
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=30)
+    assert not at.exception
+    assert at.button[0].disabled is True
 
 
 def test_seletor_de_estrategia_oferece_as_quatro_configuracoes():
@@ -35,11 +42,8 @@ def test_seletor_de_estrategia_oferece_as_quatro_configuracoes():
     assert at.selectbox[0].value.startswith("D")  # default recomendado
 
 
-def test_relatorio_renderiza_citacao_e_contagem_por_veredito_sem_rodar_o_pipeline():
-    """Popula o estado como se uma analise ja tivesse rodado -- nao chama
-    o pipeline de verdade (custa dezenas de minutos, ver CLAUDE.md >
-    Fase 4)."""
-    julgamentos = [
+def _julgamentos_sinteticos() -> list[JulgamentoAssercao]:
+    return [
         JulgamentoAssercao(
             assercao="A amostragem foi conduzida pela produção.",
             veredito="NAO_CONFORME",
@@ -57,6 +61,22 @@ def test_relatorio_renderiza_citacao_e_contagem_por_veredito_sem_rodar_o_pipelin
             motivo_abstencao=None,
         ),
         JulgamentoAssercao(
+            assercao="O sistema de qualidade abrange todo o ciclo de vida.",
+            veredito="CONFORME",
+            citacao=Citacao(
+                norma="RDC 658/2022",
+                artigo="6",
+                paragrafo=None,
+                titulo_secao=None,
+                trecho_literal="O SQF deve abranger todas as etapas do ciclo de vida.",
+                chunk_id="RDC-658-2022_art6",
+                pagina=3,
+                score_recuperacao=0.91,
+            ),
+            justificativa="Confirmado pelo contexto.",
+            motivo_abstencao=None,
+        ),
+        JulgamentoAssercao(
             assercao="O lote foi identificado com etiqueta.",
             veredito="INDETERMINADO",
             citacao=None,
@@ -65,25 +85,49 @@ def test_relatorio_renderiza_citacao_e_contagem_por_veredito_sem_rodar_o_pipelin
         ),
     ]
 
+
+def _app_em_modo_relatorio() -> AppTest:
     at = AppTest.from_file(CAMINHO_APP)
-    at.session_state["julgamentos"] = julgamentos
+    at.session_state["julgamentos"] = _julgamentos_sinteticos()
     at.session_state["estrategia_usada"] = "D"
     at.session_state["documento_analisado"] = "teste.pdf"
     at.run(timeout=30)
+    return at
 
+
+def test_relatorio_renderiza_uma_mensagem_de_chat_por_julgamento():
+    at = _app_em_modo_relatorio()
     assert not at.exception
     assert at.subheader[0].value == "Relatório — teste.pdf"
-    assert len(at.expander) == 2
+    assert len(at.chat_message) == 3
 
+
+def test_relatorio_mostra_contagem_por_veredito():
+    at = _app_em_modo_relatorio()
     contagem = {m.label: m.value for m in at.metric}
     assert contagem["NAO_CONFORME"] == "1"
+    assert contagem["CONFORME"] == "1"
     assert contagem["INDETERMINADO"] == "1"
-    assert contagem["CONFORME"] == "0"
+    assert contagem["NAO_APLICAVEL"] == "0"
 
-    expander_nao_conforme = at.expander[0]
-    textos_markdown = [m.value for m in expander_nao_conforme.markdown]
-    assert any("RDC 658/2022, Art. 238" in texto for texto in textos_markdown)
-    assert any("O pessoal de Controle de Qualidade" in texto for texto in textos_markdown)
 
-    expander_indeterminado = at.expander[1]
-    assert any("Nenhuma citação" in m.value for m in expander_indeterminado.markdown)
+def test_filtro_por_veredito_reduz_as_mensagens_exibidas():
+    at = _app_em_modo_relatorio()
+    filtro = at.pills[0]
+    assert set(filtro.options) == set(config.VEREDITOS)
+    assert set(filtro.value) == set(config.VEREDITOS)  # tudo selecionado por padrao
+
+    filtro.set_value(["NAO_CONFORME"]).run()
+    assert not at.exception
+    assert len(at.chat_message) == 1
+
+    textos = [m.value for m in at.chat_message[0].markdown]
+    assert any("NAO_CONFORME" in texto for texto in textos)
+
+
+def test_filtro_sem_nenhum_veredito_selecionado_nao_quebra_e_avisa():
+    at = _app_em_modo_relatorio()
+    at.pills[0].set_value([]).run()
+    assert not at.exception
+    assert len(at.chat_message) == 0
+    assert any("Nenhum julgamento" in c.value for c in at.caption)
