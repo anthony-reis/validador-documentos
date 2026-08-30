@@ -26,15 +26,31 @@ trecho para compara-las.
 - Nomes de pessoas, cargos ou areas envolvidas, por si so' (quem \
 esteve presente nao e' verificavel; QUEM DEVE fazer algo, segundo uma \
 norma, e' verificavel).
+- Descricao de quem executa uma ETAPA ROTINEIRA do fluxo de trabalho \
+(quem limpa, quem inspeciona, quem preenche um registro, quem confirma \
+disponibilidade de material) quando NENHUMA norma de BPF define \
+especificamente qual papel deve executar aquela etapa -- isso e' \
+organizacao interna do POP, nao um requisito regulatorio. So' extraia \
+uma atribuicao de papel quando ela for um PONTO DE CONTROLE que normas \
+tipicamente regulam: liberacao/aprovacao por uma funcao especifica \
+(ex.: QA), segregacao entre quem executa e quem libera, ou autorizacao \
+obrigatoria antes de uma etapa critica.
 - Titulos, cabecalhos de tabela, ou frases vagas sem conteudo \
 verificavel.
 
 Extraia (afirmacoes sobre o que FOI FEITO que uma norma de BPF tipicamente \
-regula): quem executou uma etapa exigida por norma (ex.: amostragem, \
-liberacao, aprovacao), se um processo/documentacao/treinamento/validacao \
+regula): se uma liberacao/aprovacao critica foi feita pela funcao correta \
+(ex.: QA, nao Producao), se um processo/documentacao/treinamento/validacao \
 obrigatorios foram realizados ou nao, se uma condicao de controle (faixa, \
 prazo, sequencia, segregacao, autorizacao) declarada no documento foi \
 respeitada ou violada.
+
+Ao formular a afirmacao, descreva o CONTEUDO/PROPOSITO da exigencia, \
+nunca o codigo ou numero de formulario/procedimento interno usado para \
+registra-la (ex.: escreva "o resultado da inspecao visual deve ser \
+registrado", nunca "registrado no FR-PR-018") -- esse codigo e' \
+especifico deste documento, nao aparece em nenhuma norma, e so' \
+atrapalha a busca pelo trecho normativo correspondente.
 
 Cada assercao deve ser uma frase autocontida (nao dependa de "isso" ou \
 "o mesmo" referindo-se a outra frase). Na duvida entre extrair ou nao, \

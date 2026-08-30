@@ -645,6 +645,76 @@ manual confirmou relevância alta (score > 0.94) para consultas sobre
 validação analítica e gestão de risco -- exatamente os tópicos que
 motivaram a expansão. 93 testes passando.
 
+## Refino da extração de asserções e achado sobre o limiar de score (pós-Fase 7)
+
+Usuário reportou taxa de `INDETERMINADO` muito alta (20/26) num POP
+fictício novo (limpeza de linha de compressão) e pediu para investigar.
+Diagnóstico feito com dado real, não suposição: rodei extração +
+recuperação D + julgamento completo fora da Streamlit, imprimindo score
+de recuperação e `motivo_abstencao` de cada veredito. Descartei duas
+hipóteses antes de mudar código: `RETRIEVAL_SCORE_THRESHOLD=0.0` não
+estava cortando nada (scores do cross-encoder ficam quase sempre entre 0
+e 1 nesse corpus, raramente negativos) e a base normativa cobria bem a
+maioria dos tópicos-armadilha do documento (testei consultas em
+linguagem natural para validação de limpeza, pior caso, retenção de
+registros, line clearance — todas com score alto). A causa real: metade
+das asserções extraídas eram descrições de fluxo de trabalho ("o
+operador de produção executa a limpeza") sem exigência normativa
+correspondente (abstenção correta, mas desperdiçada), e o fraseado da
+asserção (jargão do POP, códigos de formulário como "FR-PR-018")
+prejudicava a recuperação da mesma asserção que uma pergunta em
+linguagem natural encontrava fácil.
+
+**Dois ajustes em `SISTEMA_EXTRACAO_ASSERCOES`
+(`src/agent/prompts.py`)**:
+1. Novo item na lista "não extraia": atribuição de papel a uma etapa
+   ROTINEIRA do fluxo de trabalho (quem limpa, quem inspeciona, quem
+   preenche um registro) quando nenhuma norma de BPF define
+   especificamente qual papel deve executar aquilo. Mantém extraível o
+   caso oposto — liberação/aprovação por função específica, segregação
+   entre quem executa e quem libera, autorização obrigatória antes de
+   etapa crítica — porque esses SÃO pontos de controle que normas
+   regulam. Validado com um caso real do segundo documento de teste: "a
+   decisão de liberação de lote deve ser tomada pelo responsável
+   designado... e não pelo investigador do desvio" continuou sendo
+   extraída e julgada normalmente.
+2. Nova instrução para descrever o CONTEÚDO/PROPÓSITO da exigência, nunca
+   o código de formulário/procedimento interno usado para registrá-la —
+   esse código é específico do documento, não aparece em nenhuma norma, e
+   só atrapalha a busca.
+
+Testado em dois documentos fictícios reais (não só no que motivou a
+mudança): POP de limpeza (26→25 asserções, `INDETERMINADO` 20→15) e POP
+de tratamento de desvios (34 asserções extraídas, nenhuma descrição de
+tarefa rotineira sem contrapartida normativa). Comparação antes/depois
+não é um A/B perfeitamente controlado (a extração via LLM não é
+determinística entre execuções), mas a ausência de asserções do tipo
+"fulano faz X" no "depois" confirma que o filtro está funcionando como
+pretendido.
+
+**Achado mais importante desta rodada, novo e não relacionado ao pedido
+original**: testando os 60 julgamentos reais dos dois documentos,
+encontrei 4 vereditos `CONFORME`/`NAO_CONFORME` confiantes baseados em
+citações com score de recuperação quase zero (0,004–0,056) — chunks
+sem relação real com a asserção (ex.: assunto "liderança deve ser
+informada de um evento" citando o artigo sobre notificar autoridade
+sanitária de recolhimento de produto). Confirmei manualmente as 4: são
+falsos positivos genuínos, não só citações "estranhas mas defensáveis".
+Isso é mais grave que abstenção demais — é o sistema citando algo
+rastreável (passa a checagem de fidelidade de citação, que só verifica
+substring) mas que não sustenta o veredito de fato. Todos os falsos
+positivos confirmados ficaram com score < 0,06; praticamente todos os
+vereditos que pareceram corretos nos ~76 julgamentos reais rodados hoje
+ficaram com score ≥ 0,12 — sugere que um limiar por volta de `0.1` (hoje
+`0.0`) resolveria isso sem custar muito recall, mas **isso ainda não foi
+implementado**: mexe na regra de abstenção que este arquivo marca como
+não-negociável, o valor não vem de uma calibração formal (só de ~76
+pontos de dado observados em 2 documentos), e o mesmo `RETRIEVAL_SCORE_
+THRESHOLD` hoje se aplica às quatro estratégias apesar delas terem
+escalas de score diferentes (cosseno em A, RRF em C, logit/probabilidade
+do cross-encoder em D) — decisão em aberto com o usuário, não decidida
+unilateralmente.
+
 ## Armadilhas conhecidas
 
 - `bge-m3` é pesado (~2 GB); alternativa menor é `multilingual-e5-base`, mas
