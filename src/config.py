@@ -58,6 +58,14 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "150"))
 # --- Recuperacao ---
 RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "5"))
 RETRIEVAL_SCORE_THRESHOLD = float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.0"))
+# Candidatos buscados em CADA retriever (denso/esparso) antes da fusao
+# hibrida (config C) e do rerank (config D) -- maior que RETRIEVAL_TOP_K
+# para dar chance de sobreposicao entre as duas listas.
+RETRIEVAL_POOL_SIZE = int(os.getenv("RETRIEVAL_POOL_SIZE", "20"))
+# Constante k do Reciprocal Rank Fusion (Cormack et al., 2009). 60 e' o
+# valor de referencia da literatura original; parametrizavel para os
+# experimentos reportarem o efeito de varia-lo.
+RRF_K = int(os.getenv("RRF_K", "60"))
 
 # Vereditos possiveis do agente (ver CLAUDE.md: regra de abstencao).
 VEREDITOS = ("CONFORME", "NAO_CONFORME", "NAO_APLICAVEL", "INDETERMINADO")

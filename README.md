@@ -9,8 +9,9 @@ citação rastreável e sujeito a revisão humana — nunca uma aprovação
 automática (ver `CLAUDE.md` para o raciocínio completo por trás de cada
 decisão de projeto).
 
-**Status atual**: Fase 2 de 7 concluída (ingestão + indexação). Ver
-`CLAUDE.md` > "Fases do projeto" para o roteiro completo.
+**Status atual**: Fase 3 de 7 concluída (ingestão + indexação +
+recuperação A/B/C/D). Ver `CLAUDE.md` > "Fases do projeto" para o
+roteiro completo.
 
 ## Requisitos
 
@@ -112,6 +113,18 @@ Reindexe sempre que o corpus (`data/normas/`) mudar. Se você trocar o
 modelo de embedding, apague `chroma_db/` inteiro antes de reindexar (o
 Chroma grava a dimensão do vetor na criação da coleção e não migra
 sozinho).
+
+## Como testar uma busca (A/B/C/D)
+
+Com o índice já construído (`python -m src.indexing.build`):
+
+```python
+from src.retrieval.factory import criar_retriever
+
+retriever = criar_retriever("D")  # "A" denso | "B" esparso | "C" hibrido | "D" hibrido+rerank
+for resultado in retriever.buscar("qual o objetivo das boas práticas de fabricação?", top_k=3):
+    print(resultado.metadata["norma"], resultado.metadata["artigo"], resultado.score)
+```
 
 ## Estrutura do projeto
 

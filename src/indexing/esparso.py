@@ -11,6 +11,7 @@ from __future__ import annotations
 import pickle
 from pathlib import Path
 
+import numpy as np
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
 
@@ -18,6 +19,14 @@ from src import config
 from src.ingestion.chunking import Chunk
 
 CAMINHO_PADRAO = config.BM25_INDEX_DIR / "indice.pkl"
+
+
+def _resolver_caminho(caminho: Path | None) -> Path:
+    # Nao usar CAMINHO_PADRAO como valor-padrao de parametro: defaults sao
+    # resolvidos na DEFINICAO da funcao, entao um monkeypatch em
+    # CAMINHO_PADRAO (comum em testes) nao teria efeito nenhum aqui --
+    # bug real encontrado ao escrever os testes da Fase 3.
+    return caminho if caminho is not None else CAMINHO_PADRAO
 
 
 def _documento(chunk: Chunk) -> Document:
@@ -38,22 +47,37 @@ def construir_indice(chunks: list[Chunk]) -> BM25Retriever:
     return BM25Retriever.from_documents([_documento(c) for c in chunks])
 
 
-def salvar_indice(retriever: BM25Retriever, caminho: Path = CAMINHO_PADRAO) -> None:
+def salvar_indice(retriever: BM25Retriever, caminho: Path | None = None) -> None:
+    caminho = _resolver_caminho(caminho)
     caminho.parent.mkdir(parents=True, exist_ok=True)
     with open(caminho, "wb") as arquivo:
         pickle.dump(retriever, arquivo)
 
 
-def carregar_indice(caminho: Path = CAMINHO_PADRAO) -> BM25Retriever:
-    with open(caminho, "rb") as arquivo:
+def carregar_indice(caminho: Path | None = None) -> BM25Retriever:
+    with open(_resolver_caminho(caminho), "rb") as arquivo:
         return pickle.load(arquivo)
 
 
-def buscar(query: str, top_k: int = config.RETRIEVAL_TOP_K, caminho: Path = CAMINHO_PADRAO) -> list[dict]:
-    """Busca esparsa BM25 (config B, ver CLAUDE.md). Exposta aqui para o
-    teste de aceitacao da Fase 2; a Fase 3 reaproveita por baixo da
-    interface comum de recuperacao."""
+def buscar(query: str, top_k: int = config.RETRIEVAL_TOP_K, caminho: Path | None = None) -> list[dict]:
+    """Busca esparsa BM25 (config B, ver CLAUDE.md).
+
+    `BM25Retriever.invoke()` do LangChain devolve so' os documentos, sem
+    score -- por isso acessamos o vetorizador `rank_bm25.BM25Okapi`
+    interno diretamente (`retriever.vectorizer.get_scores`) para expor um
+    score real, necessario pela interface comum de recuperacao da Fase 3
+    (ver src/retrieval/base.py).
+    """
     retriever = carregar_indice(caminho)
-    retriever.k = top_k
-    documentos = retriever.invoke(query)
-    return [{"chunk_id": doc.metadata["chunk_id"], "texto": doc.page_content, "metadata": doc.metadata} for doc in documentos]
+    consulta_processada = retriever.preprocess_func(query)
+    scores = np.asarray(retriever.vectorizer.get_scores(consulta_processada))
+    indices_top_k = np.argsort(scores)[::-1][:top_k]
+    return [
+        {
+            "chunk_id": retriever.docs[i].metadata["chunk_id"],
+            "texto": retriever.docs[i].page_content,
+            "metadata": retriever.docs[i].metadata,
+            "score": float(scores[i]),
+        }
+        for i in indices_top_k
+    ]

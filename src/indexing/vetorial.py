@@ -12,6 +12,15 @@ A colecao usa uma embedding function amarrada ao nosso modelo local
 (_FuncaoEmbeddingBGE), nunca a funcao padrao do Chroma -- que baixaria
 um modelo pela rede na primeira chamada, violando a restricao offline
 (ver CLAUDE.md).
+
+A colecao e' criada com `hnsw:space="cosine"` explicitamente. Sem isso o
+Chroma usa distancia L2 ao quadrado por padrao: para vetores ja
+normalizados (ver src/indexing/embeddings.py) a ORDEM dos vizinhos mais
+proximos seria identica sob L2 ou cosseno (transformacao monotona), mas
+o VALOR do score reportado nao seria "similaridade de cosseno" como a
+config A pede literalmente (ver CLAUDE.md > "quatro configuracoes de
+recuperacao") -- por isso configuramos o espaco de distancia em vez de
+confiar so' na equivalencia de ordenacao.
 """
 
 from __future__ import annotations
@@ -80,7 +89,11 @@ def indexar(chunks: list[Chunk], recriar: bool = True) -> chromadb.Collection:
     colecao = cliente.get_or_create_collection(
         NOME_COLECAO,
         embedding_function=_FuncaoEmbeddingBGE(),
-        metadata={"modelo_embedding": "bge-m3", "hash_corpus": hash_corpus(chunks)},
+        metadata={
+            "hnsw:space": "cosine",
+            "modelo_embedding": "bge-m3",
+            "hash_corpus": hash_corpus(chunks),
+        },
     )
     if not chunks:
         return colecao

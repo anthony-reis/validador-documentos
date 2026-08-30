@@ -171,9 +171,10 @@ validador-docs/  (raiz deste repo)
 
 ## Fases do projeto
 
-**Progresso atual: Fase 2 concluída** (ingestão de todo o corpus +
-indexação densa/esparsa funcionando e testadas contra dados reais).
-Próxima: Fase 3 (recuperação A/B/C/D atrás de interface comum).
+**Progresso atual: Fase 3 concluída** (as quatro configurações de
+recuperação A/B/C/D atrás de uma interface comum, testadas contra dados
+reais). Próxima: Fase 4 (agente LangGraph com citação obrigatória e
+regra de abstenção).
 
 - **Fase 0** — `CLAUDE.md` (este arquivo), `pyproject.toml`, `.env.example`,
   `config.py`, esqueleto de pastas, `pytest` rodando vazio.
@@ -232,6 +233,33 @@ em `tests/test_indexing.py`.
 **Armadilha de dependências**: instalar `huggingface_hub[cli]` sem
 pinar a versão puxa a 1.x, que quebra `transformers`/`tokenizers`
 (exigem `<1.0`). Fixado em `pyproject.toml`.
+
+### Recuperação A/B/C/D (Fase 3)
+
+`src/retrieval/base.py` define a interface comum (`Retriever.buscar(query,
+top_k) -> list[ResultadoRecuperacao]`); `src/retrieval/factory.py` seleciona
+a estratégia por letra. Score só é comparável **dentro** da mesma
+estratégia — cosseno (A) e BM25 (B) vivem em escalas incompatíveis, por
+isso a fusão híbrida (C, `hibrido.py`) usa **Reciprocal Rank Fusion**
+sobre o *rank* de cada lista, não o score bruto. A config D
+(`reranqueado.py`) roda o cross-encoder só sobre o pool já filtrado por C
+(`RETRIEVAL_POOL_SIZE`, default 20), nunca sobre o corpus inteiro —
+cross-encoders são precisos mas caros demais para escala.
+
+**Correção feita nesta fase**: o Chroma usa distância L2 por padrão: a
+coleção agora é criada com `hnsw:space="cosine"` explícito (ver
+`src/indexing/vetorial.py`) para o score da config A ser literalmente
+similaridade de cosseno, como a especificação pede — com vetores
+normalizados a *ordem* dos vizinhos seria idêntica sob L2, mas o *valor*
+do score não seria intuitivo. Reindexar do zero foi necessário.
+
+**Bug real encontrado nos testes**: `caminho: Path = CAMINHO_PADRAO`
+como valor-padrão de parâmetro é resolvido na definição da função, não a
+cada chamada — um `monkeypatch` em `CAMINHO_PADRAO` (comum em testes)
+não tinha nenhum efeito, e `RetrieverEsparso` silenciosamente caía de
+volta no índice BM25 real em vez do isolado do teste. Corrigido trocando
+o default por `None` + resolução dentro do corpo da função
+(`src/indexing/esparso.py::_resolver_caminho`).
 
 ### Duas famílias de chunking (decisão da Fase 1)
 
