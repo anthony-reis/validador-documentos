@@ -153,6 +153,61 @@ Todo veredito diferente de `INDETERMINADO` carrega uma citação rastreável
 assistivo — a saída é um parecer para revisão humana, nunca uma
 aprovação automática (ver `CLAUDE.md`).
 
+### Decisões de projeto do agente (Fase 4)
+
+Cinco decisões que sustentam o comportamento do agente — raciocínio
+completo em `CLAUDE.md` > "Agente LangGraph (Fase 4)":
+
+1. **Auto-verificação é determinística (substring), não uma segunda
+   chamada de LLM.** O `trecho_citado` alegado pelo LLM precisa existir
+   literalmente (após normalizar espaços) no chunk realmente recuperado;
+   se não existir, o sistema força `INDETERMINADO` com
+   `motivo_abstencao` explícito. Mais defensável na banca do que "um LLM
+   verificando outro LLM".
+2. **`ChatOllama.with_structured_output` com o método padrão
+   (`function_calling`) falha silenciosamente** (retorna `None`) com
+   `qwen2.5:7b-instruct-q4_K_M` — descoberto empiricamente antes de
+   escrever o código de produção. `method="json_schema"` (suporte
+   nativo do Ollama a saída restrita por schema) funciona de forma
+   confiável.
+3. **O prompt de julgamento precisa de critérios de decisão explícitos
+   por veredito.** Sem eles, o modelo se abstinha (`INDETERMINADO`)
+   mesmo quando o contexto já contradizia ou confirmava claramente a
+   asserção — corrigido e validado com casos de teste reais.
+4. **Corte determinístico antes de chamar o LLM**: se o melhor score de
+   recuperação está abaixo de `RETRIEVAL_SCORE_THRESHOLD`, o veredito já
+   é `INDETERMINADO` sem sequer invocar o LLM — evita pressionar o
+   modelo a "inventar" um julgamento sem contexto adequado.
+5. **A extração de asserções do documento é heurística best-effort via
+   LLM, não a fonte dos números do TFG.** A Fase 5 avalia recuperação e
+   geração contra um gabarito curado manualmente, justamente para isolar
+   essas métricas da qualidade desta extração automática.
+
+### Métricas observadas (execução real, não sintética)
+
+Ponta a ponta contra `data/documentos_teste/tratamento_de_desvio_ficticio.pdf`
+(4 páginas, documento fictício de teste), estratégia de recuperação `D`:
+
+| Métrica | Valor |
+|---|---|
+| Asserções extraídas e julgadas | 62 |
+| `INDETERMINADO` | 44 (71%) |
+| `NAO_CONFORME` | 11 (18%) |
+| `CONFORME` | 3 (5%) |
+| `NAO_APLICAVEL` | 4 (6%) |
+| Verificação de fidelidade de citação disparada (citação rejeitada por não ser substring literal do chunk) | 2 ocorrências |
+| Tempo total (CPU, sem GPU, `qwen2.5:7b-instruct-q4_K_M`) | ~25 min |
+
+A taxa alta de `INDETERMINADO` é esperada e defensável, não uma falha:
+muitas asserções extraídas são fatos narrativos do incidente (datas,
+números de lote) sem uma exigência normativa correspondente para
+confirmar ou negar — o design "abster > chutar" (ver `CLAUDE.md` > regra
+de abstenção) está se comportando como pretendido.
+
+> Estes números vêm de uma única execução exploratória sobre um
+> documento de teste, não do experimento controlado A→B→C→D da Fase 5
+> — não usar como resultado de desempenho do TFG.
+
 ## Estrutura do projeto
 
 Ver `CLAUDE.md` > "Estrutura de pastas" para o mapa completo e o
