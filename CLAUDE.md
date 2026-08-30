@@ -204,10 +204,37 @@ Estas etapas são manuais, feitas com internet, **antes** de rodar o sistema:
    `hf download BAAI/bge-reranker-v2-m3 --local-dir models/bge-reranker-v2-m3`.
 
 Status atual (30/08/2026): Python 3.11 e Ollama instalados via Homebrew;
-`data/normas/RDC_658_2022.pdf` versionado no repositório (ver nota abaixo).
-Ainda faltam: `ollama pull` do modelo, download de `bge-m3`/`bge-reranker-v2-m3`,
-e o restante do corpus (ICH Q10, INs 134/2022 e 138/2022, Perguntas &
-Respostas de BPF). Ver `README.md` para o passo a passo de setup.
+corpus normativo completo em `data/normas/` (RDC 658/2022, IN 134/2022,
+IN 138/2022, ICH Q10) versionado no repositório (ver nota abaixo). Ainda
+faltam: `ollama pull` do modelo e download de `bge-m3`/`bge-reranker-v2-m3`.
+Ver `README.md` para o passo a passo de setup.
+
+### Duas famílias de chunking (decisão da Fase 1)
+
+Nem todo documento do corpus segue a estrutura `Art./§/inciso` das normas
+brasileiras: o ICH Q10 é um manual internacional organizado em seções
+numeradas (`1.`, `1.1`, `3.1.2`...). Por isso existem **duas estratégias de
+chunking intercambiáveis**, escolhidas explicitamente pelo chamador via
+`formato=` (nunca inferidas automaticamente — um palpite errado corromperia
+a base silenciosamente):
+
+- `formato="artigos"` (`src/ingestion/chunking.py`) — para RDC/IN brasileiras,
+  via regex sobre `Art.`/`§`/inciso.
+- `formato="secoes_numeradas"` (`src/ingestion/chunking_numerado.py`) — para
+  documentos como o ICH Q10. Aqui regex sobre texto puro não basta: o
+  sumário do documento tem o mesmo formato textual "número + título" de um
+  cabeçalho real. O sinal confiável é tipográfico (negrito, via
+  `PyMuPDF get_text("dict")`), com um filtro adicional por pontilhado de
+  preenchimento (dot leaders) para descartar entradas de sumário que também
+  estejam em negrito.
+
+**Limitação de corpus documentada**: o PDF do ICH Q10 usado tem um defeito
+de numeração própria a partir da seção 1.5.4 (números "andam" uma posição —
+o próprio documento anota a correção entre parênteses no título, ex.:
+"Facilitadores: ... (1.6)"). O chunker extrai o número exatamente como
+impresso, sem corrigi-lo — alterar dado de origem silenciosamente seria
+pior do que preservar e documentar um defeito conhecido do corpus. Citar
+isso como limitação na metodologia do TFG.
 
 ### Nota sobre o corpus normativo e o git
 

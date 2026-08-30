@@ -26,6 +26,40 @@ class Pagina:
     texto: str
 
 
+@dataclass(frozen=True)
+class LinhaEstilizada:
+    pagina: int
+    texto: str
+    negrito: bool
+
+
+# Bit de negrito nas flags de span do PyMuPDF (ver PDF text extraction docs).
+_FLAG_NEGRITO = 1 << 4
+
+
+def carregar_linhas_estilizadas(caminho: Path) -> list[LinhaEstilizada]:
+    """Extrai linhas com informacao de negrito, necessaria para o chunking
+    de documentos organizados em secoes numeradas (ver chunking_numerado.py):
+    la, negrito x regular e' o unico sinal confiavel para distinguir um
+    cabecalho real de uma entrada de sumario com o mesmo formato textual.
+    """
+    linhas: list[LinhaEstilizada] = []
+    doc = pymupdf.open(caminho)
+    try:
+        for i, pagina in enumerate(doc):
+            info = pagina.get_text("dict")
+            for bloco in info["blocks"]:
+                for linha in bloco.get("lines", []):
+                    texto = "".join(span["text"] for span in linha["spans"]).strip()
+                    if not texto:
+                        continue
+                    negrito = bool(linha["spans"][0]["flags"] & _FLAG_NEGRITO)
+                    linhas.append(LinhaEstilizada(pagina=i + 1, texto=texto, negrito=negrito))
+    finally:
+        doc.close()
+    return linhas
+
+
 def carregar_pdf(caminho: Path) -> list[Pagina]:
     paginas: list[Pagina] = []
     doc = pymupdf.open(caminho)

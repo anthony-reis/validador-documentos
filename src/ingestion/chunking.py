@@ -23,9 +23,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-from src import config
+from src.ingestion.texto_utils import dividir_por_tamanho, slug
 
 _ARTIGO_RE = re.compile(r"^[ \t]*Art\.\s*(\d+)(?:º|\.)\s*", re.MULTILINE)
 _PARAGRAFO_RE = re.compile(r"^[ \t]*§\s*(\d+º|único)\s*", re.MULTILINE)
@@ -94,17 +92,6 @@ def _titulo_secao_em(offset: int, marcos: list[tuple[int, str]]) -> str | None:
     return atual
 
 
-def _dividir_por_tamanho(texto: str) -> list[str]:
-    if len(texto) <= config.CHUNK_SIZE:
-        return [texto]
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=config.CHUNK_SIZE,
-        chunk_overlap=config.CHUNK_OVERLAP,
-        separators=["\n\n", "\n", ". ", " ", ""],
-    )
-    return splitter.split_text(texto)
-
-
 def gerar_chunks(texto_paginas: list[str], norma: str) -> list[Chunk]:
     """Gera chunks hierarquicos a partir do texto (ja limpo) de cada pagina.
 
@@ -143,11 +130,11 @@ def gerar_chunks(texto_paginas: list[str], norma: str) -> list[Chunk]:
             if not texto_bloco:
                 continue
             pagina = _pagina_do_offset(offset_bloco, faixas_paginas)
-            partes = _dividir_por_tamanho(texto_bloco)
+            partes = dividir_por_tamanho(texto_bloco)
             for k, parte in enumerate(partes):
                 sufixo_paragrafo = f"_p{numero_paragrafo}" if numero_paragrafo else ""
                 sufixo_subchunk = f"_{k}" if len(partes) > 1 else ""
-                chunk_id = f"{_slug(norma)}_art{numero_artigo}{sufixo_paragrafo}{sufixo_subchunk}"
+                chunk_id = f"{slug(norma)}_art{numero_artigo}{sufixo_paragrafo}{sufixo_subchunk}"
                 chunks.append(
                     Chunk(
                         chunk_id=chunk_id,
@@ -161,7 +148,3 @@ def gerar_chunks(texto_paginas: list[str], norma: str) -> list[Chunk]:
                 )
 
     return chunks
-
-
-def _slug(texto: str) -> str:
-    return re.sub(r"[^a-zA-Z0-9]+", "-", texto).strip("-")

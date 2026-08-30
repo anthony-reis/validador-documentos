@@ -94,3 +94,21 @@ def test_carregar_pdf_retorna_77_paginas():
     paginas = carregar_pdf(RDC_658_PATH)
     assert len(paginas) == 77
     assert paginas[0].numero == 1
+
+
+@pytest.mark.parametrize(
+    "nome_arquivo, norma, total_artigos_esperado",
+    [
+        ("IN_134_2022.pdf", "IN 134/2022", 48),
+        ("IN_138_2022.pdf", "IN 138/2022", 133),
+    ],
+)
+def test_instrucoes_normativas_tem_artigos_sequenciais_sem_lacunas(
+    nome_arquivo, norma, total_artigos_esperado
+):
+    caminho = config.DATA_NORMAS_DIR / nome_arquivo
+    if not caminho.exists():
+        pytest.skip(f"{nome_arquivo} ausente em data/normas/")
+    chunks = ingerir_pdf(caminho, norma=norma, formato="artigos")
+    numeros = sorted({int(c.artigo) for c in chunks})
+    assert numeros == list(range(1, total_artigos_esperado + 1))
