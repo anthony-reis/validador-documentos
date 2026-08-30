@@ -6,6 +6,8 @@ models/*
 !models/.gitkeep
 chroma_db/*
 !chroma_db/.gitkeep
+bm25_index/*
+!bm25_index/.gitkeep
 data/documentos_teste/*
 !data/documentos_teste/.gitkeep
 .pytest_cache/

@@ -12,6 +12,9 @@ dependencies = [
     "pdfplumber>=0.11,<1.0",
     "pandas>=2.2,<3.0",
     "sentence-transformers>=3.0,<4.0",
+    # Fixado <1.0: huggingface_hub 1.x quebra compatibilidade com
+    # transformers/tokenizers nas versoes usadas aqui (checado em 30/08/2026).
+    "huggingface_hub[cli]>=0.23.2,<1.0",
     "chromadb>=0.5,<0.6",
     "rank-bm25>=0.2,<0.3",
     "streamlit>=1.38,<2.0",

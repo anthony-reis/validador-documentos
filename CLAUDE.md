@@ -171,8 +171,9 @@ validador-docs/  (raiz deste repo)
 
 ## Fases do projeto
 
-**Progresso atual: Fase 1 concluída** (esqueleto + ingestão/chunking da
-RDC 658/2022 funcionando e testado). Próxima: Fase 2 (indexação).
+**Progresso atual: Fase 2 concluída** (ingestão de todo o corpus +
+indexação densa/esparsa funcionando e testadas contra dados reais).
+Próxima: Fase 3 (recuperação A/B/C/D atrás de interface comum).
 
 - **Fase 0** — `CLAUDE.md` (este arquivo), `pyproject.toml`, `.env.example`,
   `config.py`, esqueleto de pastas, `pytest` rodando vazio.
@@ -203,11 +204,34 @@ Estas etapas são manuais, feitas com internet, **antes** de rodar o sistema:
    `hf download BAAI/bge-m3 --local-dir models/bge-m3` e
    `hf download BAAI/bge-reranker-v2-m3 --local-dir models/bge-reranker-v2-m3`.
 
-Status atual (30/08/2026): Python 3.11 e Ollama instalados via Homebrew;
-corpus normativo completo em `data/normas/` (RDC 658/2022, IN 134/2022,
-IN 138/2022, ICH Q10) versionado no repositório (ver nota abaixo). Ainda
-faltam: `ollama pull` do modelo e download de `bge-m3`/`bge-reranker-v2-m3`.
-Ver `README.md` para o passo a passo de setup.
+Status atual (30/08/2026): ambiente completo -- Python 3.11, Ollama com
+`qwen2.5:7b-instruct-q4_K_M` puxado, `models/bge-m3` e
+`models/bge-reranker-v2-m3` baixados, corpus normativo completo em
+`data/normas/` versionado no repositório (ver nota abaixo). Índices
+denso (Chroma) e esparso (BM25) construídos e testados. Ver `README.md`
+para o passo a passo de setup.
+
+### Indexação (Fase 2)
+
+`src/indexing/corpus.py` mantém o manifesto explícito arquivo → (norma,
+formato) — mesmo princípio da Fase 1: nunca inferir automaticamente.
+`src/indexing/vetorial.py` (Chroma) e `src/indexing/esparso.py` (BM25)
+expõem `buscar()` já usados nos testes de aceitação; a Fase 3 reaproveita
+essas funções por baixo da interface comum A/B/C/D. `python -m
+src.indexing.build` reconstrói os dois índices a partir do zero.
+
+**Armadilha real encontrada**: o Chroma tenta enviar telemetria
+(posthog) mesmo com `anonymized_telemetry=False` — a chamada falha
+localmente por incompatibilidade de versão com o `posthog` instalado
+(erro de assinatura, não de rede). Confirmado com
+`socket.socket.connect` bloqueado que nenhuma rede é acionada; o log de
+erro é apenas silenciado em `config.py` (não afeta o comportamento).
+Ver teste `test_nenhuma_chamada_de_rede_ocorre_durante_indexacao_e_busca`
+em `tests/test_indexing.py`.
+
+**Armadilha de dependências**: instalar `huggingface_hub[cli]` sem
+pinar a versão puxa a 1.x, que quebra `transformers`/`tokenizers`
+(exigem `<1.0`). Fixado em `pyproject.toml`.
 
 ### Duas famílias de chunking (decisão da Fase 1)
 

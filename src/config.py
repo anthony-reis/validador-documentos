@@ -7,6 +7,7 @@ tocar em codigo -- exigencia do TFG (ver CLAUDE.md, secao "Chunking").
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -18,6 +19,15 @@ load_dotenv()
 # (ex.: em CI). Ver CLAUDE.md: "Restricao inegociavel: 100% offline".
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
+# O Chroma so' desativa o telemetry client (posthog.disabled=True) quando
+# anonymized_telemetry=False e' passado nas Settings (ver
+# src/indexing/vetorial.py) -- nenhuma chamada de rede chega a ocorrer
+# (confirmado com socket.socket.connect monkeypatched). O log abaixo e'
+# so' silenciado porque a versao instalada do posthog mudou a assinatura
+# de capture() e o chromadb ainda chama com a assinatura antiga, gerando
+# um TypeError local que so' polui o log -- nao indica vazamento de rede.
+logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -31,6 +41,7 @@ DATA_NORMAS_DIR = _path("DATA_NORMAS_DIR", "data/normas")
 DATA_DOCUMENTOS_TESTE_DIR = _path("DATA_DOCUMENTOS_TESTE_DIR", "data/documentos_teste")
 MODELS_DIR = _path("MODELS_DIR", "models")
 CHROMA_PERSIST_DIR = _path("CHROMA_PERSIST_DIR", "chroma_db")
+BM25_INDEX_DIR = _path("BM25_INDEX_DIR", "bm25_index")
 
 # --- Modelos locais ---
 EMBEDDING_MODEL_PATH = _path("EMBEDDING_MODEL_PATH", "models/bge-m3")
