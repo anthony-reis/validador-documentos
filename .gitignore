@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+models/*
+!models/.gitkeep
+chroma_db/*
+!chroma_db/.gitkeep
+data/normas/*
+!data/normas/.gitkeep
+data/documentos_teste/*
+!data/documentos_teste/.gitkeep
+.pytest_cache/
+*.egg-info/
