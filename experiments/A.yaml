@@ -1,0 +1,5 @@
+# Config A: denso puro (similaridade de cosseno). Ver CLAUDE.md.
+estrategia: A
+ground_truth: experiments/ground_truth_template.csv
+top_k: 5
+saida: experiments/resultados.csv

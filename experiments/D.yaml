@@ -1,0 +1,5 @@
+# Config D: hibrido + rerank cross-encoder. Ver CLAUDE.md.
+estrategia: D
+ground_truth: experiments/ground_truth_template.csv
+top_k: 5
+saida: experiments/resultados.csv

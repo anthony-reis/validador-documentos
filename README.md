@@ -9,9 +9,11 @@ citação rastreável e sujeito a revisão humana — nunca uma aprovação
 automática (ver `CLAUDE.md` para o raciocínio completo por trás de cada
 decisão de projeto).
 
-**Status atual**: Fase 4 de 7 concluída (ingestão + indexação +
-recuperação A/B/C/D + agente LangGraph). Ver `CLAUDE.md` > "Fases do
-projeto" para o roteiro completo.
+**Status atual**: Fase 5 de 7 concluída (ingestão + indexação +
+recuperação A/B/C/D + agente LangGraph + avaliação). **O ground truth
+real ainda precisa ser anotado manualmente** antes que o experimento
+comparativo A→D produza números de verdade — ver "Como avaliar" abaixo.
+Ver `CLAUDE.md` > "Fases do projeto" para o roteiro completo.
 
 ## Requisitos
 
@@ -207,6 +209,49 @@ de abstenção) está se comportando como pretendido.
 > Estes números vêm de uma única execução exploratória sobre um
 > documento de teste, não do experimento controlado A→B→C→D da Fase 5
 > — não usar como resultado de desempenho do TFG.
+
+## Como avaliar (Fase 5)
+
+### 1. Anote o ground truth (obrigatório, manual — não pule)
+
+Os templates em `experiments/ground_truth_template.csv` (recuperação) e
+`experiments/gabarito_geracao_template.csv` (geração) vêm só com uma
+linha de exemplo marcada `APAGUE-ESTA-LINHA`. **Este projeto
+deliberadamente não vem com ground truth real** — se a mesma
+implementação que constrói o retriever também fabricasse o gabarito que
+o avalia, a avaliação seria circular. Anote manualmente (o documento de
+Perguntas & Respostas de BPF da ANVISA, citado em
+`REFERENCIAS-E-CORPUS.md`, é uma fonte pronta para isso).
+
+Formato de `ground_truth_template.csv`:
+`id, pergunta, chunks_relevantes (separados por ;), norma, artigo, categoria_documento`.
+
+Formato de `gabarito_geracao_template.csv`:
+`id, assercao, veredito_esperado (CONFORME/NAO_CONFORME/NAO_APLICAVEL/INDETERMINADO), norma, artigo`.
+
+### 2. Rode a avaliação de recuperação (rápida, sem LLM)
+
+```bash
+python -m src.evaluation.run --config experiments/A.yaml
+python -m src.evaluation.run --config experiments/B.yaml
+python -m src.evaluation.run --config experiments/C.yaml
+python -m src.evaluation.run --config experiments/D.yaml
+```
+
+As quatro rodadas acumulam no mesmo `experiments/resultados.csv`
+(`precision@k`, `recall@k`, `MRR`, `nDCG@k`, tempo médio por consulta,
+hash do corpus, versões de modelo) — essa tabela A→D é o resultado
+central do TFG.
+
+### 3. Rode a avaliação de geração (lenta, usa o LLM)
+
+```bash
+python -m src.evaluation.run_geracao --gabarito experiments/gabarito_geracao_template.csv --estrategia D
+```
+
+Uma chamada ao LLM por linha do gabarito (~20-25s cada em CPU, ver
+métricas da Fase 4 acima) — grava em `experiments/resultados_geracao.csv`
+(taxa de acerto, taxa de abstenção, fidelidade de citação).
 
 ## Estrutura do projeto
 

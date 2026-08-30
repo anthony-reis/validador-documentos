@@ -171,10 +171,12 @@ validador-docs/  (raiz deste repo)
 
 ## Fases do projeto
 
-**Progresso atual: Fase 4 concluída** (agente LangGraph completo,
-citação obrigatória, regra de abstenção, testado ponta a ponta contra
-documento real). Próxima: Fase 5 (avaliação: métricas, runner,
-ground truth).
+**Progresso atual: Fase 5 concluída** (métricas de recuperação e
+geração, runners de experimento, templates de ground truth). **O
+ground truth real ainda não foi anotado** — os templates estão vazios
+(só uma linha de exemplo marcada para apagar); o experimento central
+A→D só produz números reais depois dessa anotação manual. Próxima:
+Fase 6 (Streamlit).
 
 - **Fase 0** — `CLAUDE.md` (este arquivo), `pyproject.toml`, `.env.example`,
   `config.py`, esqueleto de pastas, `pytest` rodando vazio.
@@ -311,6 +313,43 @@ disparou de fato 2 vezes nessa execução real (não só em teste sintético).
 **Custo real de execução**: ~25 min para 62 julgamentos + extração,
 CPU-only (sem GPU), qwen2.5:7b-instruct-q4_K_M — relevante para
 dimensionar os experimentos da Fase 5.
+
+### Avaliação (Fase 5)
+
+**Decisão metodológica importante**: o ground truth (`experiments/
+ground_truth_template.csv` e `gabarito_geracao_template.csv`) foi
+deixado **vazio** (só uma linha de exemplo, claramente marcada para
+apagar) — eu não anotei dados reais nele. Se a mesma sessão que
+implementa o retriever também fabricasse o gabarito que o avalia, a
+avaliação ficaria circular e indefensável na banca. O usuário anota
+manualmente (ver `REFERENCIAS-E-CORPUS.md`: o documento de Perguntas &
+Respostas de BPF da ANVISA é a fonte sugerida, "quase pronta" para
+ground truth).
+
+`src/evaluation/metricas_recuperacao.py`: `precision@k`, `recall@k`,
+`MRR`, `nDCG@k` com relevância **binária** (o ground truth não anota
+graus de relevância — só "relevante" ou não). Puramente determinístico,
+sem LLM.
+
+`src/evaluation/metricas_geracao.py`: taxa de acerto (veredito vs.
+gabarito), taxa de abstenção, fidelidade de citação. A fidelidade de
+citação **não reprocessa a verificação de substring** — ela já acontece
+dentro do agente a cada julgamento (`src/agent/nos.py::julgar_assercao`);
+essa métrica só agrega o resultado já calculado ali (via
+`MOTIVO_CITACAO_NAO_ENCONTRADA`, constante compartilhada entre os dois
+módulos para não duplicar a string e arriscar divergência).
+
+`src/evaluation/run.py` (`python -m src.evaluation.run --config
+experiments/{A,B,C,D}.yaml`): as quatro configs escrevem no mesmo
+`experiments/resultados.csv` por padrão — trivial montar a tabela
+comparativa A→D pedida pela especificação. Cada linha registra hash do
+corpus (lido da própria coleção Chroma, não recalculado — reflete o que
+foi de fato indexado), modelo de embedding, reranker, `RRF_K`,
+`RETRIEVAL_POOL_SIZE` e timestamp.
+
+`src/evaluation/run_geracao.py`: runner separado e mais lento (usa o
+agente completo, uma chamada de LLM por linha do gabarito) — não faz
+sentido acoplar ao runner rápido de recuperação.
 
 ### Duas famílias de chunking (decisão da Fase 1)
 

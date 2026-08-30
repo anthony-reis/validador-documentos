@@ -1,0 +1,5 @@
+# Config B: esparso puro (BM25). Ver CLAUDE.md.
+estrategia: B
+ground_truth: experiments/ground_truth_template.csv
+top_k: 5
+saida: experiments/resultados.csv

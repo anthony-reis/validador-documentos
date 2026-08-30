@@ -17,6 +17,10 @@ from src.ingestion.loader import carregar_pdf
 from src.ingestion.texto_utils import dividir_por_tamanho
 from src.retrieval.base import Retriever, ResultadoRecuperacao
 
+# Reaproveitado por src/evaluation/metricas_geracao.py::fidelidade_de_citacao
+# -- evita duplicar a string literal entre os dois modulos.
+MOTIVO_CITACAO_NAO_ENCONTRADA = "citacao do LLM nao corresponde literalmente ao chunk recuperado"
+
 
 def parse_documento(caminho: Path) -> list[str]:
     """Texto do documento sob analise, uma string por pagina nao-vazia."""
@@ -109,7 +113,7 @@ def julgar_assercao(retriever: Retriever, assercao: str) -> JulgamentoAssercao:
             veredito="INDETERMINADO",
             citacao=citacao,
             justificativa=julgamento_llm.justificativa,
-            motivo_abstencao="citacao do LLM nao corresponde literalmente ao chunk recuperado",
+            motivo_abstencao=MOTIVO_CITACAO_NAO_ENCONTRADA,
         )
 
     return JulgamentoAssercao(

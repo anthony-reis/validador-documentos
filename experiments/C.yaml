@@ -1,0 +1,5 @@
+# Config C: hibrido (BM25 + denso, fusao RRF). Ver CLAUDE.md.
+estrategia: C
+ground_truth: experiments/ground_truth_template.csv
+top_k: 5
+saida: experiments/resultados.csv
