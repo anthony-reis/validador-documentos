@@ -171,10 +171,10 @@ validador-docs/  (raiz deste repo)
 
 ## Fases do projeto
 
-**Progresso atual: Fase 3 concluída** (as quatro configurações de
-recuperação A/B/C/D atrás de uma interface comum, testadas contra dados
-reais). Próxima: Fase 4 (agente LangGraph com citação obrigatória e
-regra de abstenção).
+**Progresso atual: Fase 4 concluída** (agente LangGraph completo,
+citação obrigatória, regra de abstenção, testado ponta a ponta contra
+documento real). Próxima: Fase 5 (avaliação: métricas, runner,
+ground truth).
 
 - **Fase 0** — `CLAUDE.md` (este arquivo), `pyproject.toml`, `.env.example`,
   `config.py`, esqueleto de pastas, `pytest` rodando vazio.
@@ -260,6 +260,57 @@ não tinha nenhum efeito, e `RetrieverEsparso` silenciosamente caía de
 volta no índice BM25 real em vez do isolado do teste. Corrigido trocando
 o default por `None` + resolução dentro do corpo da função
 (`src/indexing/esparso.py::_resolver_caminho`).
+
+### Agente LangGraph (Fase 4)
+
+Grafo linear (`src/agent/grafo.py`): `parse → extrair_assercoes →
+processar_assercoes → fim`. **Simplificação deliberada**: o loop "para
+cada requisito normativo aplicável" do diagrama da especificação é uma
+iteração Python dentro do nó `processar_assercoes`, não um fan-out
+dinâmico via `Send` do LangGraph — os julgamentos são independentes
+entre si e não há necessidade real de paralelismo, então `Send`
+adicionaria complexidade sem mudar o comportamento observável.
+
+**Auto-verificação é determinística, não uma segunda chamada de LLM**
+(decisão confirmada com o usuário antes de implementar): o
+`trecho_citado` que o LLM alega precisa ser substring literal (após
+normalizar espaços) do chunk realmente recuperado — se não for, o
+veredito é forçado para `INDETERMINADO` com `motivo_abstencao`
+explícito. Mais defensável na banca que "um LLM verificando outro LLM"
+(mesmo raciocínio já usado na Fase 2 para a telemetria).
+
+**Corte determinístico antes de chamar o LLM**: se o melhor score de
+recuperação está abaixo de `RETRIEVAL_SCORE_THRESHOLD`, o veredito já é
+`INDETERMINADO` sem sequer invocar o LLM — evita pressionar o modelo a
+"inventar" um julgamento sem contexto adequado.
+
+**Descobertas empíricas sobre `ChatOllama.with_structured_output`**
+(testado antes de escrever o código de produção): o método padrão
+(`function_calling`) retorna `None` silenciosamente com
+`qwen2.5:7b-instruct-q4_K_M` — o modelo não produz uma tool call que o
+parser reconheça. `method="json_schema"` (suporte nativo do Ollama a
+saída restrita por schema) funciona de forma confiável. O campo de
+veredito precisa ser `Literal[...]`, não `str` — com `str` o modelo
+despeja texto livre no campo. O prompt de julgamento precisa de
+critérios de decisão explícitos por veredito: sem eles, o modelo se
+abstém (`INDETERMINADO`) mesmo quando o contexto já contradiz ou
+confirma claramente a asserção.
+
+**Extração de asserções é heurística best-effort via LLM, não fonte dos
+números do TFG** — a Fase 5 usa um gabarito curado manualmente
+justamente para isolar a qualidade de recuperação/geração da qualidade
+desta extração. Validação real (documento fictício de 4 páginas, 62
+asserções extraídas): distribuição `INDETERMINADO 44, NAO_CONFORME 11,
+CONFORME 3, NAO_APLICAVEL 4`. A taxa alta de abstenção é esperada e
+defensável: muitas "asserções" extraídas são fatos narrativos (datas,
+números de lote) sem uma exigência normativa correspondente para
+confirmar/negar — sinal de que o design "abster > chutar" está
+funcionando, não uma falha. A verificação de fidelidade de citação
+disparou de fato 2 vezes nessa execução real (não só em teste sintético).
+
+**Custo real de execução**: ~25 min para 62 julgamentos + extração,
+CPU-only (sem GPU), qwen2.5:7b-instruct-q4_K_M — relevante para
+dimensionar os experimentos da Fase 5.
 
 ### Duas famílias de chunking (decisão da Fase 1)
 

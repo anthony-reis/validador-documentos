@@ -8,6 +8,9 @@ dependencies = [
     "langchain>=0.3,<0.4",
     "langchain-community>=0.3,<0.4",
     "langgraph>=0.2,<0.3",
+    # Fixado <0.3: langchain-ollama >=0.3 puxa langchain-core 1.x, que
+    # conflita com langchain/langgraph 0.x fixados acima (checado em 30/08/2026).
+    "langchain-ollama>=0.2,<0.3",
     "pymupdf>=1.24,<2.0",
     "pdfplumber>=0.11,<1.0",
     "pandas>=2.2,<3.0",

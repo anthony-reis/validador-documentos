@@ -9,9 +9,9 @@ citação rastreável e sujeito a revisão humana — nunca uma aprovação
 automática (ver `CLAUDE.md` para o raciocínio completo por trás de cada
 decisão de projeto).
 
-**Status atual**: Fase 3 de 7 concluída (ingestão + indexação +
-recuperação A/B/C/D). Ver `CLAUDE.md` > "Fases do projeto" para o
-roteiro completo.
+**Status atual**: Fase 4 de 7 concluída (ingestão + indexação +
+recuperação A/B/C/D + agente LangGraph). Ver `CLAUDE.md` > "Fases do
+projeto" para o roteiro completo.
 
 ## Requisitos
 
@@ -125,6 +125,33 @@ retriever = criar_retriever("D")  # "A" denso | "B" esparso | "C" hibrido | "D" 
 for resultado in retriever.buscar("qual o objetivo das boas práticas de fabricação?", top_k=3):
     print(resultado.metadata["norma"], resultado.metadata["artigo"], resultado.score)
 ```
+
+## Como analisar um documento com o agente
+
+Com o índice já construído e o Ollama rodando:
+
+```python
+from pathlib import Path
+from src.agent.pipeline import analisar_documento
+
+relatorio = analisar_documento(Path("data/documentos_teste/seu_arquivo.pdf"), estrategia="D")
+print(relatorio.contagem_por_veredito)
+for julgamento in relatorio.julgamentos:
+    print(julgamento.veredito, julgamento.assercao)
+    if julgamento.citacao:
+        print("  ->", julgamento.citacao.norma, julgamento.citacao.artigo)
+```
+
+> Em CPU (sem GPU), espere ~20-25 minutos para um documento de poucas
+> páginas com `qwen2.5:7b-instruct-q4_K_M` — cada asserção extraída gera
+> pelo menos uma chamada ao LLM. O teste de ponta a ponta real
+> (`tests/test_agent.py::TestPipelineRealComOllama`) só roda com
+> `RUN_SLOW_LLM_TESTS=1` por causa desse custo.
+
+Todo veredito diferente de `INDETERMINADO` carrega uma citação rastreável
+(`norma`, `artigo`, `trecho_literal`, `chunk_id`, `score`). O sistema é
+assistivo — a saída é um parecer para revisão humana, nunca uma
+aprovação automática (ver `CLAUDE.md`).
 
 ## Estrutura do projeto
 
