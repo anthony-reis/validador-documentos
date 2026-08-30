@@ -64,6 +64,42 @@ def test_retriever_reranqueado_encontra_chunk_relevante(indices_isolados):
     assert resultados[0].chunk_id == "t3"
 
 
+QUERIES_LOTE = [
+    "qualificação de equipamentos de produção",
+    "treinamento de pessoal",
+    "validação de processo documentada",
+]
+
+
+class TestBuscarLoteEquivaleAChamadasIndividuais:
+    """Ver CLAUDE.md > "Melhorias de performance": buscar_lote() precisa
+    devolver o mesmo resultado que N chamadas de buscar(), so' que com
+    menos round-trips de embedding/Chroma/reranker."""
+
+    def _comparar(self, retriever, queries):
+        resultado_lote = retriever.buscar_lote(queries, top_k=2)
+        resultado_individual = [retriever.buscar(q, top_k=2) for q in queries]
+        assert len(resultado_lote) == len(resultado_individual) == len(queries)
+        for lote, individual in zip(resultado_lote, resultado_individual):
+            assert [r.chunk_id for r in lote] == [r.chunk_id for r in individual]
+
+    def test_denso(self, indices_isolados):
+        self._comparar(RetrieverDenso(), QUERIES_LOTE)
+
+    def test_esparso(self, indices_isolados):
+        self._comparar(RetrieverEsparso(), QUERIES_LOTE)
+
+    def test_hibrido(self, indices_isolados):
+        self._comparar(RetrieverHibrido(), QUERIES_LOTE)
+
+    def test_reranqueado(self, indices_isolados):
+        self._comparar(RetrieverReranqueado(), QUERIES_LOTE)
+
+    def test_lote_vazio_nao_quebra(self, indices_isolados):
+        for retriever in (RetrieverDenso(), RetrieverEsparso(), RetrieverHibrido(), RetrieverReranqueado()):
+            assert retriever.buscar_lote([], top_k=2) == []
+
+
 def test_factory_cria_a_estrategia_correta_por_letra(indices_isolados):
     assert isinstance(criar_retriever("A"), RetrieverDenso)
     assert isinstance(criar_retriever("B"), RetrieverEsparso)

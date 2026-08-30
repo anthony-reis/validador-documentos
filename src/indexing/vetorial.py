@@ -113,21 +113,39 @@ def obter_colecao() -> chromadb.Collection:
     return obter_cliente().get_collection(NOME_COLECAO, embedding_function=_FuncaoEmbeddingBGE())
 
 
+def buscar_lote(queries: list[str], top_k: int = config.RETRIEVAL_TOP_K) -> list[list[dict]]:
+    """Versao em lote de `buscar()` (ver CLAUDE.md > "Melhorias de
+    performance"): uma chamada a `gerar_embeddings()` para TODAS as
+    queries + uma chamada a `collection.query()` com MULTIPLOS
+    `query_embeddings` -- suportado nativamente pelo Chroma instalado,
+    so' nunca era usado -- em vez de um par (embedding + query) de
+    chamadas POR query. Devolve uma lista de resultados na MESMA ordem
+    de `queries`.
+    """
+    if not queries:
+        return []
+    colecao = obter_colecao()
+    embeddings_consulta = gerar_embeddings(queries)
+    resultado = colecao.query(query_embeddings=embeddings_consulta, n_results=top_k)
+    return [
+        [
+            {"chunk_id": id_, "texto": texto, "metadata": metadata, "distancia": distancia}
+            for id_, texto, metadata, distancia in zip(
+                resultado["ids"][i],
+                resultado["documents"][i],
+                resultado["metadatas"][i],
+                resultado["distances"][i],
+            )
+        ]
+        for i in range(len(queries))
+    ]
+
+
 def buscar(query: str, top_k: int = config.RETRIEVAL_TOP_K) -> list[dict]:
     """Busca densa por similaridade de cosseno (config A, ver CLAUDE.md).
 
     Exposta aqui para o teste de aceitacao da Fase 2; a Fase 3 reaproveita
-    isso por baixo da interface comum de recuperacao.
+    isso por baixo da interface comum de recuperacao. Implementada em
+    cima de `buscar_lote` com uma unica query, para nao duplicar a logica.
     """
-    colecao = obter_colecao()
-    embedding_consulta = gerar_embeddings([query])[0]
-    resultado = colecao.query(query_embeddings=[embedding_consulta], n_results=top_k)
-    return [
-        {"chunk_id": id_, "texto": texto, "metadata": metadata, "distancia": distancia}
-        for id_, texto, metadata, distancia in zip(
-            resultado["ids"][0],
-            resultado["documents"][0],
-            resultado["metadatas"][0],
-            resultado["distances"][0],
-        )
-    ]
+    return buscar_lote([query], top_k=top_k)[0]

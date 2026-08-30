@@ -69,7 +69,16 @@ def _citacao_de(resultado: ResultadoRecuperacao, trecho_citado: str) -> Citacao:
 
 def julgar_assercao(retriever: Retriever, assercao: str) -> JulgamentoAssercao:
     resultados = retriever.buscar(assercao, top_k=config.RETRIEVAL_TOP_K)
+    return julgar_assercao_com_resultados(resultados, assercao)
 
+
+def julgar_assercao_com_resultados(resultados: list[ResultadoRecuperacao], assercao: str) -> JulgamentoAssercao:
+    """Nucleo de `julgar_assercao`, separado para reaproveitamento com
+    resultados de recuperacao ja obtidos em LOTE (ver src/agent/lote.py
+    e CLAUDE.md > "Melhorias de performance") -- evita repetir uma busca
+    individual por assercao quando varias ja foram buscadas de uma vez.
+    `julgar_assercao` continua identica em assinatura e comportamento
+    para quem so' tem uma assercao por vez."""
     if not resultados or resultados[0].score < config.RETRIEVAL_SCORE_THRESHOLD:
         # Corte deterministico (ver CLAUDE.md > regra de abstencao): sem
         # trecho normativo com score acima do limiar, o veredito e'

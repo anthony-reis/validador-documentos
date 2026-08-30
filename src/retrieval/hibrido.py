@@ -9,6 +9,8 @@ score_rrf(d) = soma, para cada lista em que d aparece, de 1/(k_rrf + rank(d)).
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from src import config
 from src.retrieval.base import ResultadoRecuperacao
 from src.retrieval.denso import RetrieverDenso
@@ -46,6 +48,23 @@ class RetrieverHibrido:
         self.tamanho_pool = tamanho_pool
 
     def buscar(self, query: str, top_k: int = config.RETRIEVAL_TOP_K) -> list[ResultadoRecuperacao]:
-        candidatos_densos = self._denso.buscar(query, top_k=self.tamanho_pool)
-        candidatos_esparsos = self._esparso.buscar(query, top_k=self.tamanho_pool)
+        # Denso e esparso sao independentes entre si -- rodar em paralelo
+        # e' seguro (cada um so' le seu proprio indice) e barato de
+        # adicionar (ver CLAUDE.md > "Melhorias de performance").
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futuro_denso = executor.submit(self._denso.buscar, query, top_k=self.tamanho_pool)
+            futuro_esparso = executor.submit(self._esparso.buscar, query, top_k=self.tamanho_pool)
+            candidatos_densos = futuro_denso.result()
+            candidatos_esparsos = futuro_esparso.result()
         return fundir_rrf([candidatos_densos, candidatos_esparsos], top_k=top_k, k_rrf=self.k_rrf)
+
+    def buscar_lote(self, queries: list[str], top_k: int = config.RETRIEVAL_TOP_K) -> list[list[ResultadoRecuperacao]]:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futuro_denso = executor.submit(self._denso.buscar_lote, queries, top_k=self.tamanho_pool)
+            futuro_esparso = executor.submit(self._esparso.buscar_lote, queries, top_k=self.tamanho_pool)
+            densos_por_query = futuro_denso.result()
+            esparsos_por_query = futuro_esparso.result()
+        return [
+            fundir_rrf([densos, esparsos], top_k=top_k, k_rrf=self.k_rrf)
+            for densos, esparsos in zip(densos_por_query, esparsos_por_query)
+        ]

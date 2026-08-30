@@ -66,6 +66,12 @@ RETRIEVAL_POOL_SIZE = int(os.getenv("RETRIEVAL_POOL_SIZE", "20"))
 # valor de referencia da literatura original; parametrizavel para os
 # experimentos reportarem o efeito de varia-lo.
 RRF_K = int(os.getenv("RRF_K", "60"))
+# Tamanho do sub-lote ao buscar/reranquear varias assercoes de uma vez
+# (ver CLAUDE.md > "Melhorias de performance" -- buscar_lote). Um lote
+# unico gigante perderia feedback incremental na UI; sub-lotes pequenos
+# demais perdem o ganho de agrupar as chamadas de embedding/Chroma/
+# reranker.
+RETRIEVAL_BATCH_SIZE = int(os.getenv("RETRIEVAL_BATCH_SIZE", "20"))
 
 # Vereditos possiveis do agente (ver CLAUDE.md: regra de abstencao).
 VEREDITOS = ("CONFORME", "NAO_CONFORME", "NAO_APLICAVEL", "INDETERMINADO")

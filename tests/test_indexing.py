@@ -63,6 +63,30 @@ def test_construir_e_buscar_esparso_retorna_chunk_relevante(caminho_bm25_isolado
     assert resultados[0]["chunk_id"] == "t2"
 
 
+def test_carregar_indice_e_cacheado_por_caminho_nao_le_o_disco_de_novo(caminho_bm25_isolado, monkeypatch):
+    """Achado de performance: buscar() desserializava o indice inteiro do
+    disco a cada chamada -- o cache deve fazer isso so' uma vez por
+    caminho (mesmo padrao ja usado para o modelo de embeddings/reranker)."""
+    esparso._carregar_indice_cacheado.cache_clear()
+    retriever = esparso.construir_indice(CHUNKS_SINTETICOS)
+    esparso.salvar_indice(retriever, caminho=caminho_bm25_isolado)
+
+    chamadas = []
+    pickle_load_original = esparso.pickle.load
+
+    def pickle_load_espiao(*args, **kwargs):
+        chamadas.append(1)
+        return pickle_load_original(*args, **kwargs)
+
+    monkeypatch.setattr(esparso.pickle, "load", pickle_load_espiao)
+
+    esparso.buscar("treinamento de pessoal", top_k=1, caminho=caminho_bm25_isolado)
+    esparso.buscar("qualificação de equipamentos", top_k=1, caminho=caminho_bm25_isolado)
+    esparso.buscar("validação de processo", top_k=1, caminho=caminho_bm25_isolado)
+
+    assert len(chamadas) == 1
+
+
 def test_nenhuma_chamada_de_rede_ocorre_durante_indexacao_e_busca(chroma_isolado, monkeypatch):
     """Ver CLAUDE.md > restricao offline: monkeypatch em socket.socket
     levantando excecao durante uma operacao completa de indexacao+busca."""

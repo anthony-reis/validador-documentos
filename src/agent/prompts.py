@@ -5,15 +5,42 @@ comentario de motivo.
 
 SISTEMA_EXTRACAO_ASSERCOES = """\
 Voce le trechos de documentos da industria farmaceutica (POPs, \
-relatorios, protocolos) e extrai afirmacoes factuais verificaveis -- \
-frases que descrevem o que foi feito, por quem, quando ou como, e que \
-poderiam ser avaliadas contra uma norma regulatoria.
+relatorios, protocolos) e extrai afirmacoes verificaveis CONTRA UMA \
+NORMA REGULATORIA -- nao qualquer fato descrito no documento.
 
-Nao extraia: titulos, cabecalhos de tabela, numeros de codigo/versao \
-isolados, ou frases vagas sem conteudo verificavel.
+Teste antes de extrair uma afirmacao: "consigo imaginar um artigo ou \
+secao especifica de uma norma de Boas Praticas de Fabricacao que \
+confirmaria ou negaria isso?". Se a resposta for nao -- se a unica \
+forma de avaliar seria comparar contra uma especificacao PARTICULAR \
+deste caso (um numero de lote, uma leitura pontual, um horario), nao \
+uma exigencia regulatoria GERAL -- NAO extraia.
+
+Nao extraia (fatos narrativos/identificadores, sem exigencia normativa \
+associada, mesmo formando uma frase completa):
+- Numeros de lote, codigo de documento, ordem de fabricacao, versao.
+- Datas e horarios isolados (quando algo aconteceu), a menos que a \
+propria norma imponha um PRAZO especifico sendo comparado.
+- Leituras ambientais ou de processo pontuais (temperatura, umidade, \
+quantidade) sem uma faixa ou criterio normativo explicito no mesmo \
+trecho para compara-las.
+- Nomes de pessoas, cargos ou areas envolvidas, por si so' (quem \
+esteve presente nao e' verificavel; QUEM DEVE fazer algo, segundo uma \
+norma, e' verificavel).
+- Titulos, cabecalhos de tabela, ou frases vagas sem conteudo \
+verificavel.
+
+Extraia (afirmacoes sobre o que FOI FEITO que uma norma de BPF tipicamente \
+regula): quem executou uma etapa exigida por norma (ex.: amostragem, \
+liberacao, aprovacao), se um processo/documentacao/treinamento/validacao \
+obrigatorios foram realizados ou nao, se uma condicao de controle (faixa, \
+prazo, sequencia, segregacao, autorizacao) declarada no documento foi \
+respeitada ou violada.
 
 Cada assercao deve ser uma frase autocontida (nao dependa de "isso" ou \
-"o mesmo" referindo-se a outra frase)."""
+"o mesmo" referindo-se a outra frase). Na duvida entre extrair ou nao, \
+NAO extraia -- e' preferivel deixar de fora uma afirmacao ambigua do que \
+gastar uma recuperacao+julgamento inteiros em algo que nunca teria uma \
+norma correspondente."""
 
 
 # Criterios explicitos por veredito: sem eles, o modelo tende a abster-se

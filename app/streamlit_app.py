@@ -8,12 +8,17 @@ custo real por asserção (dezenas de segundos em CPU, ver métricas da
 Fase 4) torna feedback incremental essencial pra usabilidade.
 
 Fluxo em duas etapas:
-1. **Ao vivo**: enquanto a análise roda, cada página extraída e cada
-   asserção julgada aparece como uma mensagem de chat assim que fica
-   pronta, com uma barra de progresso fixa no rodapé da tela (CSS
-   simples via `unsafe_allow_html`, sem componente extra). Filtrar
-   durante essa transmissão não faz sentido -- a lista ainda não existe
-   por inteiro.
+1. **Ao vivo**: extração e julgamento rodam INTERCALADOS por página (não
+   duas fases separadas) -- assim que uma página é extraída, suas
+   asserções já são julgadas antes de seguir para a próxima página.
+   Cada página extraída e cada asserção julgada aparece como uma
+   mensagem de chat assim que fica pronta, com uma barra de progresso
+   fixa no rodapé da tela (CSS simples via `unsafe_allow_html`, sem
+   componente extra). Ver CLAUDE.md > "Melhorias de performance": antes
+   disso a extração de TODAS as páginas terminava por completo antes de
+   qualquer julgamento começar, deixando a tela parada muito tempo antes
+   do primeiro resultado. Filtrar durante essa transmissão não faz
+   sentido -- a lista ainda não existe por inteiro.
 2. **Modo relatório**: ao chegar em 100%, a página recarrega
    (`st.rerun()`) para uma visão persistente com filtro por veredito
    (chips via `st.pills`) acima da lista -- pedido explícito do usuário
@@ -33,7 +38,7 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import config  # noqa: E402
-from src.agent.nos import extrair_assercoes, julgar_assercao, parse_documento  # noqa: E402
+from src.agent.nos import extrair_assercoes, julgar_assercao_com_resultados, parse_documento  # noqa: E402
 from src.agent.schemas import JulgamentoAssercao  # noqa: E402
 from src.indexing import vetorial  # noqa: E402
 from src.retrieval.factory import criar_retriever  # noqa: E402
@@ -167,37 +172,62 @@ if enviar and arquivo is not None:
         paginas = parse_documento(caminho_tmp)
         if limitar_paginas:
             paginas = paginas[: int(limitar_paginas)]
+        total_paginas = len(paginas)
 
-        # Extracao pagina a pagina (nao de uma vez): cada pagina processada
-        # vira uma mensagem de chat imediatamente -- e' a etapa mais
-        # "silenciosa" do pipeline, entao feedback incremental aqui importa
-        # tanto quanto durante o julgamento.
-        assercoes: list[str] = []
+        # Extracao e julgamento INTERCALADOS por pagina -- ate' aqui o
+        # loop extraia TODAS as paginas primeiro e so' entao comecava a
+        # julgar (usuario via a barra travada em "extraindo" por muito
+        # tempo antes do primeiro veredito aparecer). Julgar as assercoes
+        # de uma pagina assim que ela e' extraida, antes de seguir pra
+        # proxima, corrige isso -- o tempo TOTAL nao muda (continua
+        # sequencial), mas o primeiro resultado visivel chega muito antes.
+        retriever = None
+        todas_assercoes: list[str] = []
+        julgamentos: list[JulgamentoAssercao] = []
         for indice_pagina, pagina in enumerate(paginas):
             _barra_fixa(
                 barra,
-                (indice_pagina / max(len(paginas), 1)) * 0.3,
-                f"Extraindo asserções — página {indice_pagina + 1}/{len(paginas)}…",
+                indice_pagina / max(total_paginas, 1),
+                f"Extraindo página {indice_pagina + 1}/{total_paginas}…",
             )
             novas = extrair_assercoes([pagina])
-            assercoes.extend(novas)
+            todas_assercoes.extend(novas)
             if novas:
                 with st.chat_message("assistant", avatar="📄"):
-                    st.write(f"Página {indice_pagina + 1}/{len(paginas)}: {len(novas)} asserção(ões) encontrada(s).")
+                    st.write(f"Página {indice_pagina + 1}/{total_paginas}: {len(novas)} asserção(ões) encontrada(s).")
+                if retriever is None:
+                    retriever = criar_retriever(estrategia)
 
-        if not assercoes:
-            _barra_fixa(barra, 1.0, "Concluído — nenhuma asserção verificável encontrada.")
-            st.info("Nenhuma asserção verificável foi encontrada neste documento.")
-        else:
-            retriever = criar_retriever(estrategia)
-            julgamentos: list[JulgamentoAssercao] = []
-            for indice_assercao, assercao in enumerate(assercoes):
-                fracao = 0.3 + 0.7 * (indice_assercao / len(assercoes))
-                _barra_fixa(barra, fracao, f"Julgando asserções… {indice_assercao}/{len(assercoes)}")
-                julgamento = julgar_assercao(retriever, assercao)
+            # Recuperacao em LOTE para as assercoes desta pagina (ver
+            # CLAUDE.md > "Melhorias de performance"): uma chamada de
+            # embedding/Chroma/reranker para todas de uma vez, em vez de
+            # uma por assercao -- em sub-lotes de RETRIEVAL_BATCH_SIZE
+            # caso uma unica pagina produza mais assercoes que isso.
+            resultados_por_assercao: list = []
+            for inicio in range(0, len(novas), config.RETRIEVAL_BATCH_SIZE):
+                sub_lote = novas[inicio : inicio + config.RETRIEVAL_BATCH_SIZE]
+                if hasattr(retriever, "buscar_lote"):
+                    resultados_por_assercao.extend(retriever.buscar_lote(sub_lote, top_k=config.RETRIEVAL_TOP_K))
+                else:
+                    resultados_por_assercao.extend(
+                        retriever.buscar(a, top_k=config.RETRIEVAL_TOP_K) for a in sub_lote
+                    )
+
+            for indice_na_pagina, (assercao, resultados) in enumerate(zip(novas, resultados_por_assercao)):
+                fracao = (indice_pagina + (indice_na_pagina + 1) / len(novas)) / max(total_paginas, 1)
+                _barra_fixa(
+                    barra,
+                    fracao,
+                    f"Julgando… {len(julgamentos) + 1}ª asserção (página {indice_pagina + 1}/{total_paginas})",
+                )
+                julgamento = julgar_assercao_com_resultados(resultados, assercao)
                 julgamentos.append(julgamento)
                 _renderizar_julgamento(julgamento)
 
+        if not todas_assercoes:
+            _barra_fixa(barra, 1.0, "Concluído — nenhuma asserção verificável encontrada.")
+            st.info("Nenhuma asserção verificável foi encontrada neste documento.")
+        else:
             _barra_fixa(barra, 1.0, f"100% concluído — {len(julgamentos)} asserção(ões) julgada(s).")
 
             st.session_state["julgamentos"] = julgamentos
