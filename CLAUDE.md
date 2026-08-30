@@ -171,12 +171,9 @@ validador-docs/  (raiz deste repo)
 
 ## Fases do projeto
 
-**Progresso atual: Fase 6 concluída** (interface Streamlit: upload,
-seleção de estratégia, relatório com citações, aviso de supervisão
-humana). **O ground truth real ainda não foi anotado** — os templates
-estão vazios (só uma linha de exemplo marcada para apagar); o
-experimento central A→D só produz números reais depois dessa anotação
-manual. Próxima: Fase 7 (empacotamento offline, README de reprodução).
+**Progresso atual: as 7 fases do roteiro estão concluídas.** Pendências
+que continuam do usuário, não do código: anotar o ground truth real
+(Fase 5) e rodar o experimento comparativo A→D com dados de verdade.
 
 - **Fase 0** — `CLAUDE.md` (este arquivo), `pyproject.toml`, `.env.example`,
   `config.py`, esqueleto de pastas, `pytest` rodando vazio.
@@ -379,6 +376,38 @@ Opção de **limitar a análise às N primeiras páginas** adicionada na
 sidebar — não estava na especificação original, mas é uma acomodação
 pragmática ao custo real de execução em CPU (permite testar a interface
 sem esperar 25+ minutos a cada iteração).
+
+### Verificação offline (Fase 7)
+
+`tests/test_offline_completo.py` implementa a verificação final pedida
+pela especificação ("escreva e execute um teste que bloqueia toda a
+rede... roda uma consulta ponta a ponta"). **Decisão importante**: o
+bloqueio é seletivo, não total — loopback (`127.0.0.1`/`::1`) é
+permitido porque é assim que o próprio Ollama local é consultado (HTTP
+sobre loopback); bloquear indiscriminadamente todo socket impediria o
+próprio requisito de ter um LLM local funcionando. Só conexões para
+hosts que não sejam loopback derrubam o teste.
+
+Duas camadas: uma rápida (A/B/C/D sem LLM, roda sempre) e uma completa
+com o LLM real via Ollama (`RUN_SLOW_LLM_TESTS=1`, pelo mesmo motivo de
+custo já documentado na Fase 4). **Executei as duas de verdade** nesta
+sessão, não só escrevi o código: a rápida confirmou as quatro
+estratégias funcionando com rede externa bloqueada; a completa rodou um
+julgamento real do agente (embedding → busca → Ollama →
+auto-verificação) com a mesma restrição, em ~30s. Também validei
+separadamente que o bloqueio genuinamente rejeita um host externo real
+(`8.8.8.8`) com `RuntimeError` — não é um mecanismo que passaria por
+não estar de fato monitorando nada.
+
+### Fechamento do projeto
+
+Todas as 7 fases do roteiro (`PROMPT-CLAUDE-CODE.md`) estão
+implementadas e testadas. O que resta é trabalho do usuário, não do
+código: anotar o ground truth real (Fase 5) e rodar
+`python -m src.evaluation.run --config experiments/{A,B,C,D}.yaml` para
+obter os números reais do experimento central do TFG. Ver `README.md` >
+"Limitações conhecidas" para a lista consolidada de ressalvas
+metodológicas a citar na redação.
 
 ### Duas famílias de chunking (decisão da Fase 1)
 

@@ -9,12 +9,13 @@ citação rastreável e sujeito a revisão humana — nunca uma aprovação
 automática (ver `CLAUDE.md` para o raciocínio completo por trás de cada
 decisão de projeto).
 
-**Status atual**: Fase 6 de 7 concluída (ingestão + indexação +
-recuperação A/B/C/D + agente LangGraph + avaliação + interface
-Streamlit). **O ground truth real ainda precisa ser anotado
-manualmente** antes que o experimento comparativo A→D produza números
-de verdade — ver "Como avaliar" abaixo. Ver `CLAUDE.md` > "Fases do
-projeto" para o roteiro completo.
+**Status atual**: as 7 fases do roteiro estão concluídas (ingestão →
+indexação → recuperação A/B/C/D → agente LangGraph → avaliação →
+interface Streamlit → verificação offline). **O ground truth real ainda
+precisa ser anotado manualmente** antes que o experimento comparativo
+A→D produza números de verdade — ver "Como avaliar" abaixo. Ver
+`CLAUDE.md` > "Fases do projeto" para o histórico completo e "Limitações
+conhecidas" abaixo antes de escrever a seção de limitações do TFG.
 
 ## Requisitos
 
@@ -276,6 +277,55 @@ motivo da abstenção, quando aplicável.
 O aviso de que o sistema é assistivo (não uma aprovação automática)
 aparece sempre no topo da página, conforme a restrição adotada na
 metodologia (ver `CLAUDE.md`).
+
+## Verificação offline (Fase 7)
+
+A restrição de projeto é 100% offline em produção (ver `CLAUDE.md`).
+Isso **não** significa "zero sockets": o próprio LLM roda via Ollama em
+`127.0.0.1`, que é tráfego local, não acesso à internet. A verificação
+por isso bloqueia seletivamente qualquer conexão que **não** seja para
+loopback e roda o sistema de ponta a ponta — se qualquer parte
+(embeddings, Chroma, BM25, reranker ou o LLM) tentar alcançar um host
+externo, o teste falha imediatamente com o host revelado na mensagem.
+
+```bash
+python -m pytest tests/test_offline_completo.py -v                        # rápido: A/B/C/D sem LLM
+RUN_SLOW_LLM_TESTS=1 python -m pytest tests/test_offline_completo.py -v   # completo: inclui o LLM real
+```
+
+Ambos foram executados de verdade nesta máquina (não é código não
+testado): a versão rápida confirma as quatro estratégias de recuperação
+funcionando com rede externa bloqueada; a versão completa roda um
+julgamento real do agente (embedding → busca → LLM via Ollama →
+auto-verificação) com a mesma restrição — e uma checagem à parte
+confirmou que o bloqueio genuinamente rejeita host externo (`8.8.8.8`),
+não é um teste que passaria de qualquer jeito.
+
+## Limitações conhecidas
+
+Consolidado aqui para referência rápida ao escrever a seção de
+limitações do TFG — detalhes e raciocínio completo em `CLAUDE.md`:
+
+- **RDC 658/2022** foi obtida via mirror do Sindusfarma, não do domínio
+  `.gov.br` diretamente — o link oficial do `antigo.anvisa.gov.br`
+  citado em `REFERENCIAS-E-CORPUS.md` está fora do ar. Conteúdo
+  conferido contra o cabeçalho do Diário Oficial da União.
+- **O PDF do ICH Q10** usado tem um defeito de numeração própria a
+  partir da seção 1.5.4 (a numeração "anda" uma posição; o próprio
+  documento anota a correção entre parênteses no título). O chunker
+  extrai o número exatamente como impresso, sem corrigi-lo.
+- **A extração de asserções do documento sob análise é heurística
+  best-effort via LLM**, não determinística — não é a fonte dos números
+  de desempenho do TFG.
+- **Ground truth de avaliação (Fases 5) não vem anotado** — ver "Como
+  avaliar" acima. Sem ele, não há números reais de `precision@k`,
+  `recall@k`, `MRR`, `nDCG@k` nem das métricas de geração.
+- **Custo de execução em CPU**: ~20-25s por julgamento do agente com
+  `qwen2.5:7b-instruct-q4_K_M` sem GPU — relevante para dimensionar
+  quantas perguntas o ground truth de geração deve ter na prática.
+- **`bge-m3` é pesado (~4,3 GB em disco)**; alternativa menor
+  (`intfloat/multilingual-e5-base`) só deve ser usada se necessário, e
+  registrada como limitação metodológica adicional caso adotada.
 
 ## Estrutura do projeto
 
