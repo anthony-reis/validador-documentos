@@ -11,6 +11,7 @@ confiavel.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from functools import lru_cache
 from typing import TypeVar
 
@@ -25,6 +26,17 @@ T = TypeVar("T", bound=BaseModel)
 @lru_cache(maxsize=1)
 def _carregar_llm() -> ChatOllama:
     return ChatOllama(model=config.OLLAMA_MODEL, base_url=config.OLLAMA_BASE_URL, temperature=0)
+
+
+def stream_chat(mensagens: Iterable[tuple[str, str]]) -> Iterator[str]:
+    """Saida em texto livre, em streaming -- usado pelo chat exploratorio
+    (src/agent/chat.py), nao pelo julgamento formal. Sem
+    with_structured_output: e' so' texto de conversa, nao um veredito com
+    citacao que precise de schema/auto-verificacao (ver
+    src/agent/nos.py)."""
+    for pedaco in _carregar_llm().stream(list(mensagens)):
+        if pedaco.content:
+            yield str(pedaco.content)
 
 
 def invocar_estruturado(system: str, prompt: str, schema: type[T]) -> T:

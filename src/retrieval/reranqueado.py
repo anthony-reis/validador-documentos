@@ -19,7 +19,7 @@ from src.retrieval.hibrido import RetrieverHibrido
 
 @lru_cache(maxsize=1)
 def _carregar_reranker() -> CrossEncoder:
-    return CrossEncoder(str(config.RERANKER_MODEL_PATH))
+    return CrossEncoder(str(config.RERANKER_MODEL_PATH), device=config.DEVICE)
 
 
 def _reranquear(query: str, candidatos: list[ResultadoRecuperacao], top_k: int) -> list[ResultadoRecuperacao]:

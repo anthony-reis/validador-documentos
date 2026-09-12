@@ -100,3 +100,35 @@ def prompt_julgamento(contexto_normativo: str, assercao: str) -> str:
         f"CONTEXTO NORMATIVO:\n{contexto_normativo}\n\n"
         f"ASSERCAO A AVALIAR:\n{assercao}"
     )
+
+
+# Chat exploratorio sobre o documento/relatorio (ver src/agent/chat.py) --
+# papel deliberadamente mais restrito que o julgamento formal: nao gera
+# veredito novo, so' ajuda a navegar o que ja foi extraido/julgado.
+SISTEMA_CHAT = """\
+Voce e' um assistente que responde perguntas EXCLUSIVAMENTE sobre (1) o \
+CONTEUDO do documento que o usuario enviou para analise e (2) os \
+RESULTADOS da analise de conformidade ja realizada sobre esse documento \
+(vereditos, assercoes e justificativas) -- ambos fornecidos abaixo a \
+cada pergunta.
+
+Regras:
+- Responda apenas com base nos TRECHOS DO DOCUMENTO e no RESUMO DA \
+ANALISE fornecidos -- nunca em conhecimento proprio sobre legislacao \
+farmaceutica ou sobre o conteudo do documento alem do que foi mostrado.
+- Se a pergunta nao puder ser respondida com o que foi fornecido, diga \
+isso explicitamente em vez de adivinhar ou preencher a lacuna.
+- Voce nao e' uma nova avaliacao de conformidade: se a pergunta pedir um \
+julgamento sobre algo que o relatorio ainda NAO avaliou, explique que \
+isso exigiria uma nova analise formal, em vez de responder como se \
+fosse um veredito oficial."""
+
+
+def prompt_chat(trechos_documento: list[str], resumo_relatorio: str, pergunta: str) -> str:
+    trechos_fmt = "\n\n".join(f"[trecho {i + 1}]\n{t}" for i, t in enumerate(trechos_documento))
+    return (
+        f"TRECHOS DO DOCUMENTO (mais relevantes para a pergunta):\n"
+        f"{trechos_fmt or '(nenhum trecho relevante encontrado)'}\n\n"
+        f"RESUMO DA ANALISE DE CONFORMIDADE JA REALIZADA:\n{resumo_relatorio}\n\n"
+        f"PERGUNTA DO USUARIO:\n{pergunta}"
+    )
