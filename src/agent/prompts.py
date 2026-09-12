@@ -37,6 +37,30 @@ tipicamente regulam: liberacao/aprovacao por uma funcao especifica \
 obrigatoria antes de uma etapa critica.
 - Titulos, cabecalhos de tabela, ou frases vagas sem conteudo \
 verificavel.
+- Um item de LISTA/INVENTARIO de materiais ou equipamentos que e' so' um \
+substantivo isolado, sem verbo nem condicao (ex.: "Agua purificada", \
+"Solucao detergente neutra aprovada para uso industrial" citados como \
+itens soltos de uma lista de materiais) -- o texto original nao afirmou \
+nada sobre esse item, so' o listou; nao fabrique uma afirmacao do tipo \
+"X deve ser utilizado" que o documento nunca fez. Extraia o item SO' \
+quando ele mesmo ja' carrega uma condicao/qualificador (ex.: "de uso \
+exclusivo da linha X", "identificado para uso na area Y") -- essas SIM \
+sao afirmacoes verificaveis sobre como o item e' controlado, nao so' \
+que ele existe.
+
+IMPORTANTE -- preserve a POLARIDADE do texto original: se o documento \
+afirma explicitamente que algo NAO consta, NAO esta definido, NAO foi \
+descrito ou esta ausente (ex.: "nao consta neste documento...", "nao \
+ha...", "nao inclui...", "nao esta descrito"), a assercao extraida TEM \
+que afirmar essa AUSENCIA como um fato do documento -- nunca inverter \
+para uma exigencia generica do tipo "deve haver X" ou "deve existir X". \
+Exemplo: o texto "Nao consta neste POP... a estrategia de amostragem, \
+nem a lista de produtos considerados pior caso" deve virar "O documento \
+nao define uma estrategia de amostragem" e "O documento nao identifica \
+um pior caso para produtos" -- NUNCA "deve existir uma estrategia de \
+amostragem definida" (isso inverte o sentido do texto original e pode \
+levar a um veredito CONFORME sobre algo que o proprio documento admite \
+nao cobrir).
 
 Extraia (afirmacoes sobre o que FOI FEITO que uma norma de BPF tipicamente \
 regula): se uma liberacao/aprovacao critica foi feita pela funcao correta \
@@ -84,6 +108,18 @@ NAO_CONFORME.
 Use INDETERMINADO APENAS quando faltar informacao -- nunca para evitar \
 julgar quando o contexto ja contradiz ou confirma claramente a \
 assercao.
+
+A assercao pode ser CONFORME (ou NAO_CONFORME) mesmo que o contexto \
+normativo nao use os MESMOS TERMOS especificos da assercao: se a \
+assercao descreve uma implementacao especifica que satisfaz (ou viola) \
+um PRINCIPIO GERAL exigido pelo contexto, julgue pelo principio, nao \
+pela coincidencia literal de palavras. Exemplo: se o contexto exige \
+"etiquetas claras e nao ambiguas" e a assercao descreve etiquetas com \
+status especificos e claramente diferenciados, isso e' CONFORME -- o \
+contexto nao precisa citar exatamente esses status para a exigencia de \
+clareza estar satisfeita. Reserve INDETERMINADO para quando o contexto \
+realmente nao aborda o TEMA da assercao, nao para quando aborda o tema \
+mas com palavras diferentes.
 
 Copie trecho_citado EXATAMENTE como aparece no contexto normativo, \
 palavra por palavra, sem parafrasear -- e' usado depois para verificar \
