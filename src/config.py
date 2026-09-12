@@ -47,6 +47,31 @@ BM25_INDEX_DIR = _path("BM25_INDEX_DIR", "bm25_index")
 EMBEDDING_MODEL_PATH = _path("EMBEDDING_MODEL_PATH", "models/bge-m3")
 RERANKER_MODEL_PATH = _path("RERANKER_MODEL_PATH", "models/bge-reranker-v2-m3")
 
+
+def _resolver_device() -> str:
+    """CUDA > MPS (GPU Apple Silicon) > CPU. O sentence-transformers ja
+    faz essa mesma deteccao implicitamente quando device=None e' passado,
+    mas aqui fica explicito e configuravel via .env (DEVICE=cpu/mps/cuda)
+    -- exigencia do projeto de nada hardcoded/implicito (ver topo deste
+    arquivo). Medido nesta maquina (Apple M4): MPS reduziu o tempo de
+    embedding em ~2.5x e o de rerank em ~2.6x sobre CPU (lote de 32
+    textos/pares, bge-m3 e bge-reranker-v2-m3) -- ver CLAUDE.md >
+    "Melhorias de performance".
+    """
+    device = os.getenv("DEVICE", "auto")
+    if device != "auto":
+        return device
+    import torch
+
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+DEVICE = _resolver_device()
+
 # --- LLM via Ollama ---
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
@@ -57,7 +82,18 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "150"))
 
 # --- Recuperacao ---
 RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "5"))
-RETRIEVAL_SCORE_THRESHOLD = float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.0"))
+# Calibrado empiricamente (nao um chute -- ver CLAUDE.md > "Refino da
+# extracao de assercoes e achado sobre o limiar de score"): rodando ~76
+# julgamentos reais em 2 documentos de teste com o limiar em 0.0 (que
+# praticamente nunca corta nada, pois o score do cross-encoder raramente
+# e' negativo neste corpus), 4 vereditos CONFORME/NAO_CONFORME confiantes
+# vieram de citacoes com score 0.004-0.056 -- falsos positivos confirmados
+# manualmente, sem relacao real com a assercao. Quase todos os vereditos
+# que pareceram corretos ficaram com score >= 0.12. 0.1 corta esses casos
+# sem custar recall visivel nessa amostra, e evita chamar o LLM (~10-20s
+# em Ollama local, ver CLAUDE.md > "Melhorias de performance") para um
+# contexto ja sabido como fraco demais para sustentar um veredito.
+RETRIEVAL_SCORE_THRESHOLD = float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.1"))
 # Candidatos buscados em CADA retriever (denso/esparso) antes da fusao
 # hibrida (config C) e do rerank (config D) -- maior que RETRIEVAL_TOP_K
 # para dar chance de sobreposicao entre as duas listas.

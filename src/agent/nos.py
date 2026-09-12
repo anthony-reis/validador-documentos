@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from src import config
@@ -27,6 +28,31 @@ def parse_documento(caminho: Path) -> list[str]:
     return [pagina.texto for pagina in carregar_pdf(caminho) if pagina.texto.strip()]
 
 
+def _normalizar_para_comparacao(texto: str) -> str:
+    texto = texto.lower().strip()
+    texto = re.sub(r"[.,;:]+$", "", texto)
+    return " ".join(texto.split())
+
+
+def _e_duplicata(candidata: str, existentes: list[str], minimo: int = 20) -> bool:
+    """Duplicata = uma string CONTIDA na outra apos normalizar espacos/
+    pontuacao final -- caso real observado: CHUNK_OVERLAP faz a mesma
+    frase (perto de um limite de chunk) ser extraida duas vezes por
+    chamadas de LLM SEPARADAS (uma por chunk, cada uma sem visibilidade
+    da outra), as vezes com um qualificador extra no final (ex.: ", quando
+    aplicavel."). Um limiar de similaridade generico (SequenceMatcher.ratio)
+    nao discrimina bem aqui -- medido: a duplicata real teve ratio 0.898,
+    MENOR que duas assercoes curtas genericas e nao relacionadas
+    ("assercao 1" vs "assercao 2", ratio 0.900). Containment normalizado e'
+    o sinal que de fato separa os dois casos."""
+    candidata_norm = _normalizar_para_comparacao(candidata)
+    for existente in existentes:
+        menor, maior = sorted([candidata_norm, _normalizar_para_comparacao(existente)], key=len)
+        if len(menor) >= minimo and menor in maior:
+            return True
+    return False
+
+
 def extrair_assercoes(paginas_texto: list[str]) -> list[str]:
     """Extracao de assercoes verificaveis via LLM -- heuristica
     best-effort para uso interativo (Fase 6). NAO e' a fonte dos numeros
@@ -42,7 +68,10 @@ def extrair_assercoes(paginas_texto: list[str]) -> list[str]:
             resultado = invocar_estruturado(
                 SISTEMA_EXTRACAO_ASSERCOES, prompt_extracao(trecho), AssercoesExtraidas
             )
-            assercoes.extend(a.strip() for a in resultado.assercoes if a.strip())
+            for assercao in resultado.assercoes:
+                assercao = assercao.strip()
+                if assercao and not _e_duplicata(assercao, assercoes):
+                    assercoes.append(assercao)
     return assercoes
 
 
