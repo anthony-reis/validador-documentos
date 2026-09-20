@@ -34,6 +34,7 @@ import tempfile
 from pathlib import Path
 
 import streamlit as st
+from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -41,6 +42,7 @@ from src import config  # noqa: E402
 from src.agent import chat  # noqa: E402
 from src.agent.nos import extrair_assercoes, julgar_assercao_com_resultados, parse_documento  # noqa: E402
 from src.agent.schemas import JulgamentoAssercao  # noqa: E402
+from src.feedback import store as feedback_store  # noqa: E402
 from src.indexing import vetorial  # noqa: E402
 from src.retrieval.factory import criar_retriever  # noqa: E402
 
@@ -88,10 +90,77 @@ def _barra_fixa(placeholder: "st.delta_generator.DeltaGenerator", fracao: float,
     )
 
 
-def _renderizar_julgamento(julgamento: JulgamentoAssercao) -> None:
+def _formulario_feedback(julgamento: JulgamentoAssercao, chave: str, documento: str, estrategia: str) -> None:
+    """Feedback humano sobre um julgamento, salvo em SQLite local (ver
+    src/feedback/store.py). Só aparece no modo relatório: durante a
+    transmissão ao vivo a página ainda vai recarregar e o formulário
+    seria descartado."""
+    anterior = feedback_store.obter(documento, estrategia, julgamento.assercao)
+    st.markdown("**Seu feedback**")
+    with st.form(f"fb_{chave}"):
+        opcoes = ["Correto", "Incorreto"]
+        indice_inicial = 1 if anterior and not anterior.veredito_correto else 0
+        avaliacao = st.radio("O veredito do agente está…", opcoes, index=indice_inicial, horizontal=True)
+        outros = [v for v in config.VEREDITOS if v != julgamento.veredito]
+        veredito_certo = st.selectbox(
+            "Se incorreto, qual seria o veredito certo?",
+            outros,
+            index=outros.index(anterior.veredito_certo) if anterior and anterior.veredito_certo in outros else 0,
+        )
+        citacao_sustenta = st.checkbox(
+            "A citação sustenta o veredito",
+            value=True if anterior is None or anterior.citacao_sustenta is None else anterior.citacao_sustenta,
+            disabled=julgamento.citacao is None,
+        )
+        justificativa = st.text_area(
+            "Justificativa (obrigatória se incorreto)", value=anterior.justificativa if anterior else ""
+        )
+        enviado = st.form_submit_button("Salvar feedback")
+    if anterior:
+        st.caption(f"✔ Revisado em {anterior.criado_em:%d/%m/%Y %H:%M}. Salvar novamente substitui o feedback.")
+    if not enviado:
+        return
+
+    correto = avaliacao == "Correto"
+    citacao = julgamento.citacao
+    try:
+        # Lido aqui (e não a cada render) porque abre a coleção Chroma.
+        hash_corpus = vetorial.obter_colecao().metadata.get("hash_corpus", "")
+        feedback_store.salvar(
+            feedback_store.FeedbackAssercao(
+                documento=documento,
+                estrategia=estrategia,
+                assercao=julgamento.assercao,
+                veredito_agente=julgamento.veredito,
+                veredito_correto=correto,
+                veredito_certo=None if correto else veredito_certo,
+                citacao_sustenta=citacao_sustenta if citacao else None,
+                justificativa=justificativa,
+                modelo_llm=config.OLLAMA_MODEL,
+                hash_corpus=hash_corpus,
+                norma=citacao.norma if citacao else None,
+                artigo=citacao.artigo if citacao else None,
+                chunk_id=citacao.chunk_id if citacao else None,
+                score_recuperacao=citacao.score_recuperacao if citacao else None,
+                trecho_literal=citacao.trecho_literal if citacao else None,
+                motivo_abstencao=julgamento.motivo_abstencao,
+            )
+        )
+    except ValidationError as erro:
+        st.error(erro.errors()[0]["msg"].removeprefix("Value error, "))
+        return
+    st.success("Feedback salvo localmente.")
+
+
+def _renderizar_julgamento(
+    julgamento: JulgamentoAssercao, chave: str | None = None, documento: str = "", estrategia: str = ""
+) -> None:
+    """`chave` só é passada no modo relatório; sem ela, não há formulário
+    de feedback (transmissão ao vivo)."""
     cor = CORES_VEREDITO.get(julgamento.veredito, "gray")
     with st.chat_message("assistant", avatar="🧪"):
-        st.markdown(f":{cor}[**{julgamento.veredito}**]  {julgamento.assercao}")
+        revisado = chave is not None and feedback_store.obter(documento, estrategia, julgamento.assercao)
+        st.markdown(f":{cor}[**{julgamento.veredito}**]  {julgamento.assercao}" + ("  ✔ revisado" if revisado else ""))
         with st.expander("Detalhes"):
             st.write(
                 "**Justificativa:**",
@@ -112,6 +181,9 @@ def _renderizar_julgamento(julgamento: JulgamentoAssercao) -> None:
                 st.markdown(f"> {citacao.trecho_literal}")
             else:
                 st.write("_Nenhuma citação — nenhum trecho normativo recuperado acima do limiar configurado._")
+            if chave is not None:
+                st.divider()
+                _formulario_feedback(julgamento, chave, documento, estrategia)
 
 
 st.title("🧪 Validador de Documentos Regulatórios")
@@ -272,7 +344,12 @@ elif "julgamentos" in st.session_state:
     if not julgamentos_filtrados:
         st.caption("Nenhum julgamento para os filtros selecionados.")
     for julgamento in julgamentos_filtrados:
-        _renderizar_julgamento(julgamento)
+        _renderizar_julgamento(
+            julgamento,
+            chave=str(julgamentos.index(julgamento)),
+            documento=st.session_state["documento_analisado"],
+            estrategia=st.session_state["estrategia_usada"],
+        )
 
     st.divider()
     st.subheader("Converse sobre este documento")
