@@ -453,7 +453,7 @@ limitações do TFG — detalhes e raciocínio completo em `CLAUDE.md`:
 
 - **Feedback humano** (`src/feedback/`) só coleta e exporta; o
   calibrador que "aprende" com ele ainda não existe. Feedbacks sobre
-  asserções extraídas pelo próprio agente herdam a não determinismo da
+  asserções extraídas pelo próprio agente herdam o não determinismo da
   extração e não substituem um gabarito curado.
 
 ## Estrutura do projeto
