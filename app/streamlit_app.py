@@ -24,6 +24,12 @@ Fluxo em duas etapas:
    (chips via `st.pills`) acima da lista -- pedido explícito do usuário
    depois de ver a primeira versão da interface.
 
+3. **Feedback em paralelo**: a análise roda numa thread de segundo plano
+   (`src/agent/analise_job.py`) e a tela ao vivo é um `st.fragment` que
+   se atualiza sozinho -- assim dá para dar feedback nas asserções já
+   julgadas sem cancelar a análise (um clique em widget reexecuta o
+   script inteiro e abortaria a execução em andamento).
+
 Uso: streamlit run app/streamlit_app.py
 """
 
@@ -40,11 +46,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import config  # noqa: E402
 from src.agent import chat  # noqa: E402
-from src.agent.nos import extrair_assercoes, julgar_assercao_com_resultados, parse_documento  # noqa: E402
+from src.agent.analise_job import AnaliseJob  # noqa: E402
 from src.agent.schemas import JulgamentoAssercao  # noqa: E402
 from src.feedback import store as feedback_store  # noqa: E402
 from src.indexing import vetorial  # noqa: E402
-from src.retrieval.factory import criar_retriever  # noqa: E402
 
 st.set_page_config(page_title="Validador de Documentos Regulatórios", page_icon="🧪", layout="centered")
 
@@ -225,96 +230,79 @@ arquivo = st.file_uploader("Documento a validar (PDF)", type="pdf")
 enviar = st.button(
     "Enviar para análise",
     type="primary",
-    disabled=arquivo is None,
+    disabled=arquivo is None or st.session_state.get("job") is not None and not st.session_state["job"].finalizado_na_ui,
     use_container_width=True,
     help=None if arquivo is not None else "Anexe um PDF para habilitar a análise.",
 )
 
-if enviar and arquivo is not None:
+job: AnaliseJob | None = st.session_state.get("job")
+analise_em_andamento = job is not None and not job.finalizado_na_ui
+
+if enviar and arquivo is not None and not analise_em_andamento:
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         tmp.write(arquivo.read())
-        caminho_tmp = Path(tmp.name)
+    job = AnaliseJob(
+        documento=arquivo.name,
+        estrategia=estrategia,
+        caminho_pdf=Path(tmp.name),
+        limitar_paginas=int(limitar_paginas),
+    )
+    job.iniciar()
+    st.session_state["job"] = job
+    # Um relatório antigo não deve aparecer nem confundir o feedback.
+    for chave in ("julgamentos", "indice_chat", "chat_historico"):
+        st.session_state.pop(chave, None)
+    analise_em_andamento = True
 
-    barra = st.empty()
-    _barra_fixa(barra, 0.0, "Lendo documento…")
+
+@st.fragment(run_every=3)
+def _painel_ao_vivo(job: AnaliseJob) -> None:
+    """A análise roda em thread (ver src/agent/analise_job.py); este
+    fragmento só lê o estado a cada 3s e reexecuta sozinho -- interagir
+    com o formulário de feedback reexecuta apenas o fragmento, nunca
+    cancela a análise."""
+    estado = job.instantaneo()
 
     with st.chat_message("user", avatar="📎"):
-        st.write(f"**{arquivo.name}** enviado para análise — estratégia {estrategia}.")
+        st.write(f"**{job.documento}** em análise — estratégia {job.estrategia}.")
+    for mensagem in estado["mensagens_pagina"]:
+        with st.chat_message("assistant", avatar="📄"):
+            st.write(mensagem)
+    for indice, julgamento in enumerate(estado["julgamentos"]):
+        _renderizar_julgamento(julgamento, chave=str(indice), documento=job.documento, estrategia=job.estrategia)
 
-    try:
-        paginas = parse_documento(caminho_tmp)
-        if limitar_paginas:
-            paginas = paginas[: int(limitar_paginas)]
-        total_paginas = len(paginas)
+    _barra_fixa(st.empty(), estado["fracao"], estado["status"])
 
-        # Extracao e julgamento INTERCALADOS por pagina -- ate' aqui o
-        # loop extraia TODAS as paginas primeiro e so' entao comecava a
-        # julgar (usuario via a barra travada em "extraindo" por muito
-        # tempo antes do primeiro veredito aparecer). Julgar as assercoes
-        # de uma pagina assim que ela e' extraida, antes de seguir pra
-        # proxima, corrige isso -- o tempo TOTAL nao muda (continua
-        # sequencial), mas o primeiro resultado visivel chega muito antes.
-        retriever = None
-        todas_assercoes: list[str] = []
-        julgamentos: list[JulgamentoAssercao] = []
-        for indice_pagina, pagina in enumerate(paginas):
-            _barra_fixa(
-                barra,
-                indice_pagina / max(total_paginas, 1),
-                f"Extraindo página {indice_pagina + 1}/{total_paginas}…",
-            )
-            novas = extrair_assercoes([pagina])
-            todas_assercoes.extend(novas)
-            if novas:
-                with st.chat_message("assistant", avatar="📄"):
-                    st.write(f"Página {indice_pagina + 1}/{total_paginas}: {len(novas)} asserção(ões) encontrada(s).")
-                if retriever is None:
-                    retriever = criar_retriever(estrategia)
+    if not estado["concluido"]:
+        if st.button("Cancelar análise", key="cancelar_analise"):
+            job.cancelar()
+        return
 
-            # Recuperacao em LOTE para as assercoes desta pagina (ver
-            # CLAUDE.md > "Melhorias de performance"): uma chamada de
-            # embedding/Chroma/reranker para todas de uma vez, em vez de
-            # uma por assercao -- em sub-lotes de RETRIEVAL_BATCH_SIZE
-            # caso uma unica pagina produza mais assercoes que isso.
-            resultados_por_assercao: list = []
-            for inicio in range(0, len(novas), config.RETRIEVAL_BATCH_SIZE):
-                sub_lote = novas[inicio : inicio + config.RETRIEVAL_BATCH_SIZE]
-                if hasattr(retriever, "buscar_lote"):
-                    resultados_por_assercao.extend(retriever.buscar_lote(sub_lote, top_k=config.RETRIEVAL_TOP_K))
-                else:
-                    resultados_por_assercao.extend(
-                        retriever.buscar(a, top_k=config.RETRIEVAL_TOP_K) for a in sub_lote
-                    )
+    # Terminou: promove o resultado para o modo relatório e recarrega a
+    # página inteira.
+    job.finalizado_na_ui = True
+    if estado["erro"]:
+        st.session_state.pop("job", None)
+        st.session_state["erro_analise"] = estado["erro"]
+    elif not estado["julgamentos"]:
+        st.session_state.pop("job", None)
+        st.session_state["aviso_analise"] = "Nenhuma asserção verificável foi encontrada neste documento."
+    else:
+        st.session_state["julgamentos"] = estado["julgamentos"]
+        st.session_state["estrategia_usada"] = job.estrategia
+        st.session_state["documento_analisado"] = job.documento
+        st.session_state["indice_chat"] = job.indice_chat
+        st.session_state["chat_historico"] = []
+    st.rerun()
 
-            for indice_na_pagina, (assercao, resultados) in enumerate(zip(novas, resultados_por_assercao)):
-                fracao = (indice_pagina + (indice_na_pagina + 1) / len(novas)) / max(total_paginas, 1)
-                _barra_fixa(
-                    barra,
-                    fracao,
-                    f"Julgando… {len(julgamentos) + 1}ª asserção (página {indice_pagina + 1}/{total_paginas})",
-                )
-                julgamento = julgar_assercao_com_resultados(resultados, assercao)
-                julgamentos.append(julgamento)
-                _renderizar_julgamento(julgamento)
 
-        if not todas_assercoes:
-            _barra_fixa(barra, 1.0, "Concluído — nenhuma asserção verificável encontrada.")
-            st.info("Nenhuma asserção verificável foi encontrada neste documento.")
-        else:
-            _barra_fixa(barra, 1.0, f"100% concluído — {len(julgamentos)} asserção(ões) julgada(s).")
+if "erro_analise" in st.session_state:
+    st.error(f"A análise falhou: {st.session_state.pop('erro_analise')}")
+if "aviso_analise" in st.session_state:
+    st.info(st.session_state.pop("aviso_analise"))
 
-            st.session_state["julgamentos"] = julgamentos
-            st.session_state["estrategia_usada"] = estrategia
-            st.session_state["documento_analisado"] = arquivo.name
-            # Indice de chat construido uma unica vez aqui (nao a cada
-            # pergunta) -- embeddings do documento nao mudam entre
-            # perguntas da mesma sessao. Reiniciar o historico: um chat
-            # antigo sobre um documento diferente nao faz sentido aqui.
-            st.session_state["indice_chat"] = chat.construir_indice(paginas)
-            st.session_state["chat_historico"] = []
-            st.rerun()
-    finally:
-        caminho_tmp.unlink(missing_ok=True)
+if analise_em_andamento:
+    _painel_ao_vivo(job)
 
 elif "julgamentos" in st.session_state:
     julgamentos: list[JulgamentoAssercao] = st.session_state["julgamentos"]
