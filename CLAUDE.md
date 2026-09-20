@@ -715,6 +715,25 @@ escalas de score diferentes (cosseno em A, RRF em C, logit/probabilidade
 do cross-encoder em D) — decisão em aberto com o usuário, não decidida
 unilateralmente.
 
+## Feedback humano por asserção (pós-Fase 7, Fase 1 de 2)
+
+Na Streamlit (modo relatório), cada asserção tem um formulário dentro
+de "Detalhes": veredito correto/incorreto, veredito certo (se
+incorreto), "a citação sustenta o veredito" e justificativa (obrigatória
+se incorreto). Salvo em SQLite local (`feedback/feedback.db`,
+git-ignored; `src/feedback/store.py`, upsert por documento+estratégia+
+asserção), junto do contexto congelado do julgamento (chunk_id, score,
+trecho, hash do corpus, modelo).
+
+**Decisões**: (1) `python -m src.feedback.exportar` grava em
+`experiments/gabarito_feedback.csv`, um arquivo SEPARADO do gabarito
+oficial -- o usuário revisa e mescla à mão, para o gabarito da Fase 5
+continuar sendo anotação curada e não circular. (2) "Aprendizado" NÃO é
+fine-tuning do LLM (inviável offline nesta máquina): a Fase 2, ainda não
+feita, é um calibrador leve (scikit-learn) treinado nos feedbacks para
+sugerir o `RETRIEVAL_SCORE_THRESHOLD` -- só após haver feedbacks reais
+suficientes, e sem mudar a regra de abstenção sem aprovação explícita.
+
 ## Armadilhas conhecidas
 
 - `bge-m3` é pesado (~2 GB); alternativa menor é `multilingual-e5-base`, mas

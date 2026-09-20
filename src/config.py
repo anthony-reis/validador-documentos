@@ -114,3 +114,7 @@ VEREDITOS = ("CONFORME", "NAO_CONFORME", "NAO_APLICAVEL", "INDETERMINADO")
 
 # As quatro configuracoes de recuperacao do experimento central do TFG.
 RETRIEVAL_STRATEGIES = ("A", "B", "C", "D")
+
+# Feedback humano por assercao (SQLite local, git-ignored). Ver
+# src/feedback/store.py.
+FEEDBACK_DB_PATH = _path("FEEDBACK_DB_PATH", "feedback/feedback.db")

@@ -318,6 +318,71 @@ O aviso de que o sistema é assistivo (não uma aprovação automática)
 aparece sempre no topo da página, conforme a restrição adotada na
 metodologia (ver `CLAUDE.md`).
 
+## Feedback humano por asserção (avaliador)
+
+### Por que existe
+
+O agente é assistivo: quem decide é a pessoa que revisa. Cada revisão
+carrega informação que o sistema hoje descarta — quando o veredito
+estava errado, qual era o certo e por quê. Registrar isso serve a três
+coisas:
+
+1. **Gabarito de geração com menos esforço.** O gabarito da Fase 5
+   (`experiments/gabarito_geracao_template.csv`) precisa ser anotado à
+   mão; revisar vereditos já produzidos na interface é uma forma mais
+   rápida de gerar candidatos a linhas desse gabarito.
+2. **Erros rastreáveis.** Cada feedback guarda o contexto do julgamento
+   (`chunk_id`, score de recuperação, trecho citado, motivo de abstenção,
+   hash do corpus e modelo), permitindo ver *onde* o agente erra — por
+   exemplo, vereditos confiantes com score baixo, achado descrito em
+   `CLAUDE.md`.
+3. **Base para calibrar o limiar de abstenção** (futuro, ver abaixo).
+
+### Como funciona
+
+No modo relatório da Streamlit, dentro de "Detalhes" de cada asserção
+há um formulário:
+
+- **O veredito do agente está** *Correto* ou *Incorreto*;
+- **Veredito certo** (se incorreto) — um dos quatro vereditos, diferente
+  do dado pelo agente;
+- **A citação sustenta o veredito** (checkbox, só quando há citação);
+- **Justificativa** — obrigatória quando incorreto. Discordar sem dizer o
+  veredito certo e o motivo geraria um rótulo inútil, então o
+  `src/feedback/store.py` recusa o registro.
+
+O feedback é salvo em SQLite local (`feedback/feedback.db`, fora do git,
+sem rede). A chave é (documento, estratégia, asserção): salvar de novo
+substitui o anterior, e a asserção passa a exibir "✔ revisado".
+
+Para levar os feedbacks ao gabarito:
+
+```bash
+python -m src.feedback.exportar   # gera experiments/gabarito_feedback.csv
+```
+
+O CSV usa as colunas do gabarito de geração (`id, assercao,
+veredito_esperado, norma, artigo`): `veredito_esperado` é o veredito do
+agente se o revisor concordou, ou o veredito certo se discordou.
+
+### Decisões de projeto
+
+- **A exportação vai para um arquivo separado**, nunca direto para o
+  gabarito oficial. As asserções são extraídas pelo próprio agente; se os
+  feedbacks entrassem automaticamente no gabarito que o avalia, a
+  avaliação ficaria circular. Você revisa `gabarito_feedback.csv` e
+  mescla à mão o que quiser.
+- **SQLite em vez de arquivo de linhas**: permite corrigir um feedback já
+  dado e consultar por filtro, sem dependência nova e 100% offline.
+- **Não é fine-tuning do LLM.** Ajustar o `qwen2.5:7b` neste ambiente
+  (offline, 16 GB, poucos dados) não é viável. O passo de aprendizado
+  planejado é um classificador leve (scikit-learn) treinado nos
+  feedbacks para sugerir o `RETRIEVAL_SCORE_THRESHOLD`. **Ainda não foi
+  implementado**: só faz sentido com feedbacks reais suficientes, e
+  mudar a regra de abstenção exige aprovação explícita.
+- **Nenhum número de desempenho vem desta funcionalidade ainda.** Ela
+  apenas coleta dados; métricas só existirão depois de feedbacks reais.
+
 ## Verificação offline (Fase 7)
 
 A restrição de projeto é 100% offline em produção (ver `CLAUDE.md`).
@@ -385,6 +450,11 @@ limitações do TFG — detalhes e raciocínio completo em `CLAUDE.md`:
   marcadores na cauda do documento "Perguntas e Respostas RDC 166/2017"
   — o conteúdo (pergunta+resposta) continua correto, só o rótulo de
   contexto que fica desatualizado nessa região específica.
+
+- **Feedback humano** (`src/feedback/`) só coleta e exporta; o
+  calibrador que "aprende" com ele ainda não existe. Feedbacks sobre
+  asserções extraídas pelo próprio agente herdam o não determinismo da
+  extração e não substituem um gabarito curado.
 
 ## Estrutura do projeto
 
