@@ -38,6 +38,7 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import config  # noqa: E402
+from src.agent import chat  # noqa: E402
 from src.agent.nos import extrair_assercoes, julgar_assercao_com_resultados, parse_documento  # noqa: E402
 from src.agent.schemas import JulgamentoAssercao  # noqa: E402
 from src.indexing import vetorial  # noqa: E402
@@ -233,6 +234,12 @@ if enviar and arquivo is not None:
             st.session_state["julgamentos"] = julgamentos
             st.session_state["estrategia_usada"] = estrategia
             st.session_state["documento_analisado"] = arquivo.name
+            # Indice de chat construido uma unica vez aqui (nao a cada
+            # pergunta) -- embeddings do documento nao mudam entre
+            # perguntas da mesma sessao. Reiniciar o historico: um chat
+            # antigo sobre um documento diferente nao faz sentido aqui.
+            st.session_state["indice_chat"] = chat.construir_indice(paginas)
+            st.session_state["chat_historico"] = []
             st.rerun()
     finally:
         caminho_tmp.unlink(missing_ok=True)
@@ -266,3 +273,31 @@ elif "julgamentos" in st.session_state:
         st.caption("Nenhum julgamento para os filtros selecionados.")
     for julgamento in julgamentos_filtrados:
         _renderizar_julgamento(julgamento)
+
+    st.divider()
+    st.subheader("Converse sobre este documento")
+    st.caption(
+        "Assistente exploratório — respostas baseadas no texto do documento enviado e no "
+        "relatório acima. Não é uma nova avaliação de conformidade."
+    )
+
+    st.session_state.setdefault("chat_historico", [])
+    for turno in st.session_state["chat_historico"]:
+        with st.chat_message(turno["role"]):
+            st.write(turno["content"])
+
+    pergunta = st.chat_input("Pergunte sobre o documento ou o relatório…")
+    if pergunta:
+        st.session_state["chat_historico"].append({"role": "user", "content": pergunta})
+        with st.chat_message("user"):
+            st.write(pergunta)
+        with st.chat_message("assistant"):
+            resposta = st.write_stream(
+                chat.responder_stream(
+                    pergunta,
+                    st.session_state["chat_historico"][:-1],
+                    st.session_state["indice_chat"],
+                    julgamentos,
+                )
+            )
+        st.session_state["chat_historico"].append({"role": "assistant", "content": resposta})

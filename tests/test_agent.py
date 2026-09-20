@@ -130,6 +130,39 @@ def test_extrair_assercoes_agrega_resultados_de_varios_trechos(monkeypatch):
     assert assercoes == ["assercao 1", "assercao 2", "assercao 3"]
 
 
+def test_extrair_assercoes_remove_duplicata_de_chunks_adjacentes(monkeypatch):
+    """Caso real observado: CHUNK_OVERLAP faz a mesma frase, perto de um
+    limite de chunk, ser extraida duas vezes por chamadas de LLM
+    separadas -- uma delas com um qualificador extra no final."""
+    respostas = iter(
+        [
+            AssercoesExtraidas(assercoes=["A liberação final será realizada pelo QA"]),
+            AssercoesExtraidas(
+                assercoes=["A liberação final será realizada pelo QA, quando aplicável."]
+            ),
+            AssercoesExtraidas(assercoes=["assercao completamente distinta sobre outro tema"]),
+        ]
+    )
+    monkeypatch.setattr(nos, "invocar_estruturado", lambda *a, **k: next(respostas))
+    monkeypatch.setattr(nos, "dividir_por_tamanho", lambda t: [t])
+
+    assercoes = nos.extrair_assercoes(["chunk 1", "chunk 2 (overlap)", "chunk 3"])
+
+    assert assercoes == [
+        "A liberação final será realizada pelo QA",
+        "assercao completamente distinta sobre outro tema",
+    ]
+
+
+def test_extrair_assercoes_nao_remove_assercoes_curtas_parecidas_mas_distintas(monkeypatch):
+    respostas = iter([AssercoesExtraidas(assercoes=["assercao 1", "assercao 2"])])
+    monkeypatch.setattr(nos, "invocar_estruturado", lambda *a, **k: next(respostas))
+    monkeypatch.setattr(nos, "dividir_por_tamanho", lambda t: [t])
+
+    assercoes = nos.extrair_assercoes(["pagina 1"])
+    assert assercoes == ["assercao 1", "assercao 2"]
+
+
 def test_grafo_compila_e_roda_ponta_a_ponta_com_nos_falsos(monkeypatch):
     from src.agent import grafo as grafo_mod
 

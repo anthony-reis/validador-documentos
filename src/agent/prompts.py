@@ -37,6 +37,30 @@ tipicamente regulam: liberacao/aprovacao por uma funcao especifica \
 obrigatoria antes de uma etapa critica.
 - Titulos, cabecalhos de tabela, ou frases vagas sem conteudo \
 verificavel.
+- Um item de LISTA/INVENTARIO de materiais ou equipamentos que e' so' um \
+substantivo isolado, sem verbo nem condicao (ex.: "Agua purificada", \
+"Solucao detergente neutra aprovada para uso industrial" citados como \
+itens soltos de uma lista de materiais) -- o texto original nao afirmou \
+nada sobre esse item, so' o listou; nao fabrique uma afirmacao do tipo \
+"X deve ser utilizado" que o documento nunca fez. Extraia o item SO' \
+quando ele mesmo ja' carrega uma condicao/qualificador (ex.: "de uso \
+exclusivo da linha X", "identificado para uso na area Y") -- essas SIM \
+sao afirmacoes verificaveis sobre como o item e' controlado, nao so' \
+que ele existe.
+
+IMPORTANTE -- preserve a POLARIDADE do texto original: se o documento \
+afirma explicitamente que algo NAO consta, NAO esta definido, NAO foi \
+descrito ou esta ausente (ex.: "nao consta neste documento...", "nao \
+ha...", "nao inclui...", "nao esta descrito"), a assercao extraida TEM \
+que afirmar essa AUSENCIA como um fato do documento -- nunca inverter \
+para uma exigencia generica do tipo "deve haver X" ou "deve existir X". \
+Exemplo: o texto "Nao consta neste POP... a estrategia de amostragem, \
+nem a lista de produtos considerados pior caso" deve virar "O documento \
+nao define uma estrategia de amostragem" e "O documento nao identifica \
+um pior caso para produtos" -- NUNCA "deve existir uma estrategia de \
+amostragem definida" (isso inverte o sentido do texto original e pode \
+levar a um veredito CONFORME sobre algo que o proprio documento admite \
+nao cobrir).
 
 Extraia (afirmacoes sobre o que FOI FEITO que uma norma de BPF tipicamente \
 regula): se uma liberacao/aprovacao critica foi feita pela funcao correta \
@@ -85,6 +109,18 @@ Use INDETERMINADO APENAS quando faltar informacao -- nunca para evitar \
 julgar quando o contexto ja contradiz ou confirma claramente a \
 assercao.
 
+A assercao pode ser CONFORME (ou NAO_CONFORME) mesmo que o contexto \
+normativo nao use os MESMOS TERMOS especificos da assercao: se a \
+assercao descreve uma implementacao especifica que satisfaz (ou viola) \
+um PRINCIPIO GERAL exigido pelo contexto, julgue pelo principio, nao \
+pela coincidencia literal de palavras. Exemplo: se o contexto exige \
+"etiquetas claras e nao ambiguas" e a assercao descreve etiquetas com \
+status especificos e claramente diferenciados, isso e' CONFORME -- o \
+contexto nao precisa citar exatamente esses status para a exigencia de \
+clareza estar satisfeita. Reserve INDETERMINADO para quando o contexto \
+realmente nao aborda o TEMA da assercao, nao para quando aborda o tema \
+mas com palavras diferentes.
+
 Copie trecho_citado EXATAMENTE como aparece no contexto normativo, \
 palavra por palavra, sem parafrasear -- e' usado depois para verificar \
 automaticamente se a citacao e' real (ver CLAUDE.md > "veredito sem \
@@ -99,4 +135,36 @@ def prompt_julgamento(contexto_normativo: str, assercao: str) -> str:
     return (
         f"CONTEXTO NORMATIVO:\n{contexto_normativo}\n\n"
         f"ASSERCAO A AVALIAR:\n{assercao}"
+    )
+
+
+# Chat exploratorio sobre o documento/relatorio (ver src/agent/chat.py) --
+# papel deliberadamente mais restrito que o julgamento formal: nao gera
+# veredito novo, so' ajuda a navegar o que ja foi extraido/julgado.
+SISTEMA_CHAT = """\
+Voce e' um assistente que responde perguntas EXCLUSIVAMENTE sobre (1) o \
+CONTEUDO do documento que o usuario enviou para analise e (2) os \
+RESULTADOS da analise de conformidade ja realizada sobre esse documento \
+(vereditos, assercoes e justificativas) -- ambos fornecidos abaixo a \
+cada pergunta.
+
+Regras:
+- Responda apenas com base nos TRECHOS DO DOCUMENTO e no RESUMO DA \
+ANALISE fornecidos -- nunca em conhecimento proprio sobre legislacao \
+farmaceutica ou sobre o conteudo do documento alem do que foi mostrado.
+- Se a pergunta nao puder ser respondida com o que foi fornecido, diga \
+isso explicitamente em vez de adivinhar ou preencher a lacuna.
+- Voce nao e' uma nova avaliacao de conformidade: se a pergunta pedir um \
+julgamento sobre algo que o relatorio ainda NAO avaliou, explique que \
+isso exigiria uma nova analise formal, em vez de responder como se \
+fosse um veredito oficial."""
+
+
+def prompt_chat(trechos_documento: list[str], resumo_relatorio: str, pergunta: str) -> str:
+    trechos_fmt = "\n\n".join(f"[trecho {i + 1}]\n{t}" for i, t in enumerate(trechos_documento))
+    return (
+        f"TRECHOS DO DOCUMENTO (mais relevantes para a pergunta):\n"
+        f"{trechos_fmt or '(nenhum trecho relevante encontrado)'}\n\n"
+        f"RESUMO DA ANALISE DE CONFORMIDADE JA REALIZADA:\n{resumo_relatorio}\n\n"
+        f"PERGUNTA DO USUARIO:\n{pergunta}"
     )

@@ -19,7 +19,7 @@ from src import config
 
 @lru_cache(maxsize=1)
 def carregar_modelo() -> SentenceTransformer:
-    return SentenceTransformer(str(config.EMBEDDING_MODEL_PATH))
+    return SentenceTransformer(str(config.EMBEDDING_MODEL_PATH), device=config.DEVICE)
 
 
 def gerar_embeddings(textos: list[str]) -> list[list[float]]:
